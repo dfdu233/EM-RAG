@@ -94,6 +94,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-context-chars", type=int, default=9000)
     p.add_argument("--min-score-margin", type=int, default=2)
     p.add_argument("--unverified-policy", choices=["baseline", "abstain"], default="baseline")
+    p.add_argument("--update-policy", choices=["evidence", "latest", "frozen"], default="evidence",
+                   help="Evidence-gated EM-RAG versus matched-compute ablations")
     p.add_argument("--stop-on-verified", action="store_true")
     return p
 
@@ -132,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         max_context_chars=args.max_context_chars,
         min_score_margin=args.min_score_margin,
         unverified_policy=args.unverified_policy,
+        update_policy=args.update_policy,
         stop_on_verified=args.stop_on_verified)
     engine = EMRAG(model, retriever, config)
     out = Path(args.output)

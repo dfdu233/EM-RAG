@@ -19,6 +19,8 @@ all = ["openai>=1.50,<3", "pytest>=8,<10"]
 
 [project.scripts]
 emrag = "emrag.cli:main"
+emrag-diagnose = "emrag.diagnose_cli:main"
+emrag-reader-probe = "emrag.reader_probe:main"
 
 [tool.setuptools.packages.find]
 include = ["emrag*"]

@@ -18,7 +18,7 @@ The question stays fixed while an independent evidence ledger grows:
 6. Accept a new choice only if it has direct support, no cited refutations/missing requirements, and a score margin against competing options. Otherwise retain the previous choice; if an already verified choice becomes refuted, abstain rather than silently preserve it.
 7. Save a full per-round trace; report Harm (correct -> wrong), Rescue (wrong -> correct), coverage, verified coverage, model calls, and oracle best-prefix **as an evaluation-only upper bound**.
 
-The score is an ordinal heuristic, **not** a calibrated correctness probability:
+The score is an ordinal heuristic, **not** a calibrated correctness probability. Source-grounded quotations are still interpreted by a fallible frozen language model:
 
 ~~~text
 score(a, E) = 2 * |support_ids| - 4 * |refute_ids| - |missing_facts|
@@ -116,7 +116,7 @@ Using only --seed-retrieval without --live-medrgag-root has **no real subsequent
 
 ## 3. Matched-budget ablation
 
-The exact same retrieval, extraction, generation and judge calls are made for the following three policies, so model-call and search budgets are comparable:
+Use the same configured maximum rounds, queries, documents, model and dataset for the following three policies. These are **matched-budget ceilings**, not guaranteed identical queries or actual call counts: active evidence and planning can diverge, and early stopping can differ. Report the realized call counts from traces:
 
 | Flag | Answer update rule | Intended control |
 |---|---|---|

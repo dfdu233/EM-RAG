@@ -50,6 +50,48 @@ def read_traces(path: str | Path) -> list[dict[str, Any]]:
     return rows
 
 
+def hydrate_medrgag_first_turn(rows: list[dict], cache_path: str | Path) -> dict:
+    """Attach existing MedRGAG initial-query snippets for MANUAL evidence audit.
+
+    This is *not* multi-round retrieval replay. These initial-query snippets
+    can help prove sufficiency if they contain the required fact; their failure
+    to contain it says nothing about unseen later retrieval rounds.
+    """
+    with Path(cache_path).open(encoding="utf-8") as fp:
+        corpus = json.load(fp)
+    count = 0
+    for row in rows:
+        if row.get("documents"):
+            row.setdefault("document_snapshot_scope", "existing_trace")
+            continue
+        original = corpus.get(str(row["id"]))
+        if not isinstance(original, dict):
+            continue
+        snippets = original.get("snippets") or []
+        if not isinstance(snippets, list):
+            continue
+        documents = []
+        for rank, snippet in enumerate(snippets):
+            if not isinstance(snippet, dict):
+                continue
+            content = str(snippet.get("contents") or snippet.get("content") or "")
+            if not content.strip():
+                continue
+            documents.append({
+                "id": str(snippet.get("id", f"cached_{rank}")),
+                "contents": content, "title": str(snippet.get("title", "")),
+                "source": "MedRGAG:cached_first_turn",
+                "round": 1, "query": "<initial-original-query-not-replayed>",
+            })
+        if documents:
+            row["documents"] = documents
+            row["document_snapshot_scope"] = "cached_first_turn_only"
+            count += 1
+    return {"cases_hydrated": count,
+            "warning": "ONLY MedRGAG first-turn cached retrieval was loaded. "
+                       "No subsequent query results were reconstructed."}
+
+
 def choice(value: Any) -> str | None:
     if value is None:
         return None
@@ -172,6 +214,8 @@ def case_summary(row: dict, gold: str, margin: int = 2) -> dict:
         "num_claims_saved": len(evidence),
         "num_documents_saved": len(documents),
         "raw_documents_available": bool(documents),
+        "raw_document_scope": row.get("document_snapshot_scope",
+                                  "full_trace" if documents else "unavailable"),
         "extracted_quotes_available": bool(evidence),
         "stratum": stratum, "strata_flags": flags,
         "events": events,
@@ -274,6 +318,7 @@ def report_cases(rows: list[dict], gold: Mapping[str, str],
         "reader_never_proposed_gold_count": sum(
             c["strata_flags"]["reader_never_proposed_gold"] for c in cases),
         "cases_with_raw_documents": sum(c["raw_documents_available"] for c in cases),
+        "raw_document_scopes": dict(Counter(c["raw_document_scope"] for c in cases)),
         "cases_with_extracted_quotes": sum(c["extracted_quotes_available"] for c in cases),
         "independently_annotated_retrieval_cases": audited,
         "by_primary_stratum": dict(Counter(c["stratum"] for c in cases)),
@@ -346,6 +391,8 @@ def audit_casebook(rows: list[dict], selected: list[dict]) -> str:
             row.get("question", ""),
             "",
             "Options: " + json.dumps(row.get("options", {}), ensure_ascii=False),
+            "",
+            f"**Document snapshot scope:** {case['raw_document_scope']}",
             "",
             "### Candidate and gate events",
             "",

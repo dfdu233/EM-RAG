@@ -75,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dataset", default="medqa", help="Key in MedRGAG benchmark JSON")
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--max-examples", type=int, default=20)
+    p.add_argument("--ids-file", help="Fixed JSONL sample_manifest.jsonl from diagnose_cli; overrides max-examples")
     p.add_argument("--output", default="outputs/emrag")
     p.add_argument("--model", required=True, help="OpenAI-compatible served model name")
     p.add_argument("--api-base", default=os.environ.get("OPENAI_BASE_URL"))
@@ -98,6 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--update-policy", choices=["evidence", "latest", "frozen"], default="evidence",
                    help="Evidence-gated EM-RAG versus matched-compute ablations")
     p.add_argument("--stop-on-verified", action="store_true")
+    p.add_argument("--record-documents", action="store_true",
+                   help="Opt-in: save raw retrieved text to traces.jsonl for independent sufficiency audit; review source licensing/privacy")
     return p
 
 
@@ -106,7 +109,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_examples < 1 or args.offset < 0:
         raise ValueError("max-examples must be >= 1 and offset must be nonnegative")
     questions, gold = load_benchmark(
-        args.benchmark, args.dataset, args.offset, args.max_examples)
+        args.benchmark, args.dataset, args.offset,
+        None if args.ids_file else args.max_examples)
+    if args.ids_file:
+        from .diagnose_cli import _read_fixed_ids
+        fixed_ids = _read_fixed_ids(args.ids_file)
+        qmap = {q.id: q for q in questions}
+        unknown = set(fixed_ids) - set(qmap)
+        if unknown:
+            raise ValueError(f"Sample IDs missing in dataset: {sorted(unknown)[:10]}")
+        questions = [qmap[qid] for qid in fixed_ids]
+        gold = {qid: gold[qid] for qid in fixed_ids if qid in gold}
     if not questions:
         raise ValueError("No questions selected")
     if args.jsonl_corpus:
@@ -136,7 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         min_score_margin=args.min_score_margin,
         unverified_policy=args.unverified_policy,
         update_policy=args.update_policy,
-        stop_on_verified=args.stop_on_verified)
+        stop_on_verified=args.stop_on_verified,
+        record_documents=args.record_documents)
     engine = EMRAG(model, retriever, config)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)

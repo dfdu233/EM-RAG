@@ -144,6 +144,7 @@ Do **not** compare an abstention-enabled policy only by its selective accuracy: 
 
 Each run writes:
 
+- run_config.json: selected dataset and inference/retrieval configuration, excluding API credentials.
 - traces.jsonl: one record per question (round-0 baseline, queries, passage IDs, grounded evidence, new proposals, support/refutation scorecards, accepted/preserved/invalidated actions).
 - metrics.json: per-round accuracy, unconditional and conditional harm/rescue rates, delta accuracy, coverage, verified coverage, mean model calls, and oracle best-prefix accuracy.
 

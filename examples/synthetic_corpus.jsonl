@@ -1,0 +1,3 @@
+{"id":"textbook-1","title":"Synthetic pharmacology passage","source":"synthetic","contents":"In this synthetic training example, Drug X is contraindicated for patients with condition Y. This statement is fictional and not clinical guidance."}
+{"id":"textbook-2","title":"Synthetic comparison passage","source":"synthetic","contents":"In the same fictional setting, Drug Q is indicated for patients with condition Y. This is a constructed example, not clinical guidance."}
+{"id":"textbook-3","title":"Irrelevant synthetic distractor","source":"synthetic","contents":"Different disease categories may lead to different approaches. This passage has no drug-specific facts."}

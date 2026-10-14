@@ -51,6 +51,8 @@ def test_probe_runs_fixed_context_only_without_retrieval():
     summary = summarize_probes(res)
     assert summary["total_calls_attempted"] == 3
     assert summary["conditions"]["active_quotes"]["independently_audited_sufficient_cases"] == 1
+    assert summary["paired_interventions"]["active_quotes_to_all_quotes"]["second_breaks_first"] == 1
+    assert summary["paired_interventions"]["active_quotes_to_raw_documents"]["paired_accuracy_delta"] == 0
 
 
 def test_old_cache_does_not_pretend_documents_exist():
@@ -65,9 +67,14 @@ def test_old_cache_does_not_pretend_documents_exist():
     assert model.calls == 1
 
 
-def test_probe_hard_caps_calls_and_no_label_spoof():
+def test_probe_hard_cap_keeps_conditions_paired():
     row = fixture()
-    m = ScriptedModel([json.dumps({"choice": "A"})])
+    m = ScriptedModel([])
     res = run_probes([row], m, {"caseA": "A"}, max_calls=1)
-    assert m.calls == 1
-    assert [x["status"] for x in res] == ["ok", "skipped_budget", "skipped_budget"]
+    assert m.calls == 0
+    assert [x["status"] for x in res] == ["skipped_budget"] * 3
+    single = ScriptedModel([json.dumps({"choice": "A"})])
+    one = run_probes([row], single, {"caseA": "A"}, max_calls=1,
+                     conditions=("active_quotes",))
+    assert single.calls == 1
+    assert one[0]["status"] == "ok"

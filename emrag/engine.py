@@ -217,7 +217,13 @@ class EMRAG:
                 question, active, history, proposals, kgcc_hints or [], round_id == 1)
             history.extend(queries)
             fetched = self._search(question, queries) if queries else []
-            new_docs = ledger.add_documents(fetched[:cfg.max_new_docs], round_id)
+            new_docs: list[Document] = []
+            for doc in fetched:
+                # Fill the cap with UNIQUE documents; cross-query duplicates
+                # must not consume retrieval evidence slots.
+                new_docs.extend(ledger.add_documents([doc], round_id))
+                if len(new_docs) >= cfg.max_new_docs:
+                    break
             new_claims = ledger.add_claims(
                 self._extract(question, new_docs)) if new_docs else []
             empty_rounds = 0 if new_claims else empty_rounds + 1

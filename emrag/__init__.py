@@ -4,4 +4,4 @@ from .engine import EMRAG, EMRAGConfig
 
 __all__ = ["Question", "Document", "Evidence", "EvidenceLedger",
            "ScoreCard", "RoundTrace", "RunResult", "EMRAG", "EMRAGConfig"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

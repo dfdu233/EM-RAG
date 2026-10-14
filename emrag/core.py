@@ -180,6 +180,20 @@ class EvidenceLedger:
         protected = protected or set()
         items = list(self.evidence.values())
         items.sort(key=lambda e: (e.id not in protected, -e.round, e.id))
+        pinned = [e for e in items if e.id in protected]
+        remaining_items = [e for e in items if e.id not in protected]
+        # Give each passage one chance before adding more quotations from it.
+        # Pinned support stays ahead of redundant newly retrieved snippets.
+        seen_docs = {e.doc_id for e in pinned}
+        diverse: list[Evidence] = []
+        overflow: list[Evidence] = []
+        for e in remaining_items:
+            if e.doc_id in seen_docs:
+                overflow.append(e)
+            else:
+                seen_docs.add(e.doc_id)
+                diverse.append(e)
+        items = pinned + diverse + overflow
         result: list[Evidence] = []
         remaining = max_chars
         for item in items:

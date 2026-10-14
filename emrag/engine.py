@@ -4,7 +4,7 @@ The gate is a transparent proxy policy, not an accuracy guarantee. All
 components use frozen inference models. Gold labels never enter the engine.
 """
 from __future__ import annotations
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 from .core import Question, Document, Evidence, EvidenceLedger, RunResult, RoundTrace, ScoreCard, norm, sanitize_card
 from .model import Model, request_json
@@ -150,8 +150,24 @@ class EMRAG:
         raw = payload.get("cards", {})
         if not isinstance(raw, dict):
             raw = {}
-        return {label: sanitize_card(label, raw.get(label), allowed_ids)
-                for label in question.labels}
+        by_id = {item.id: item.doc_id for item in active}
+        def distinct_documents(ids: tuple[str, ...]) -> tuple[str, ...]:
+            seen: set[str] = set()
+            out: list[str] = []
+            for evidence_id in ids:
+                doc_id = by_id[evidence_id]
+                if doc_id not in seen:
+                    seen.add(doc_id)
+                    out.append(evidence_id)
+            return tuple(out)
+        cards = {}
+        for label in question.labels:
+            card = sanitize_card(label, raw.get(label), allowed_ids)
+            # Multiple quotes from a single passage count as one vote.
+            cards[label] = replace(
+                card, support_ids=distinct_documents(card.support_ids),
+                refute_ids=distinct_documents(card.refute_ids))
+        return cards
 
     def _decide(self, current: str | None, status: str,
                 cards: dict[str, ScoreCard], proposals: set[str]

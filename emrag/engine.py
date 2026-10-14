@@ -29,6 +29,7 @@ class EMRAGConfig:
     stop_on_verified: bool = False
     stable_rounds: int = 2
     unverified_policy: str = "baseline"  # baseline or abstain
+    update_policy: str = "evidence"  # evidence | latest | frozen
 
     def __post_init__(self) -> None:
         for key in ("max_rounds", "queries_per_round", "docs_per_query",
@@ -41,6 +42,8 @@ class EMRAGConfig:
             raise ValueError("min_score_margin must be nonnegative")
         if self.unverified_policy not in {"baseline", "abstain"}:
             raise ValueError("unverified_policy must be baseline or abstain")
+        if self.update_policy not in {"evidence", "latest", "frozen"}:
+            raise ValueError("update_policy must be evidence, latest or frozen")
 
 
 class EMRAG:
@@ -203,7 +206,14 @@ class EMRAG:
                 proposals.add(proposal)
             cards = self._judge(question, active) if active else {}
             action = "no_grounded_evidence"
-            if cards:
+            if cfg.update_policy == "latest" and proposal:
+                selected = proposal
+                status = "unverified"
+                action = "latest_proposal"
+                protected = set()
+            elif cfg.update_policy == "frozen":
+                action = "baseline_frozen"
+            elif cards:
                 selected, status, action, now_protected = self._decide(
                     selected, status, cards, proposals)
                 if status == "verified":

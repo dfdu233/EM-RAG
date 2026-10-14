@@ -8,6 +8,7 @@ python -m emrag.cli --benchmark ../MedRGAG/benchmark.json --dataset medqa \
 """
 from __future__ import annotations
 import argparse
+from dataclasses import asdict
 import json
 import os
 from pathlib import Path
@@ -139,6 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     engine = EMRAG(model, retriever, config)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
+    # Persist non-secret run arguments, so ablation budgets can be audited.
+    public_args = {k: v for k, v in vars(args).items()
+                   if k not in {"api_key", "api_base"}}
+    with (out / "run_config.json").open("w", encoding="utf-8") as fp:
+        json.dump({"args": public_args, "engine_config": asdict(config)},
+                  fp, ensure_ascii=False, indent=2)
     results = []
     with (out / "traces.jsonl").open("w", encoding="utf-8") as fp:
         for index, q in enumerate(questions, start=1):

@@ -4,7 +4,29 @@
 
 > **Scope and guarantee:** EM-RAG protects a *source-quote-grounded proxy decision process*; it cannot guarantee that every extra search step increases the **true** accuracy of a frozen black-box LLM. A verbatim quote is NOT proof that a source is scientifically correct, relevant to the specific patient, or that a model's paraphrase is entailed. Neither the model judge nor its score is calibrated.
 
-**Research-only, not for patient care.** No trained gate, value network, specialized judge, or fine-tuning is needed. The same frozen model can be used for planning, extraction, generation and verification, though their errors may remain correlated.
+**Research-only, not for patient care.** No trained gate, value network, specialized judge, or fine-tuning is needed.
+
+### v0.2: mechanism-first diagnostics (NO SOTA claim)
+
+Reported preliminary results on 500 cases (provided by the experimenter): EM-RAG **50.2%**, same-prompt initial Reader **50.4%**, MedRGAG **50.8%**. The current gate reportedly blocked **60 harmful proposals** and **67 beneficial corrections**, showing no verified aggregate gain. Before modifying the gate or expanding testing, use the **original cached traces** to separately inspect evidence availability, correct candidate generation and gate discrimination.
+
+- [Mechanism diagnosis playbook](docs/mechanism_diagnosis.md) — zero-GPU retrospective audit, fixed stratified casebook, independent evidence sufficiency annotation, optional frozen Reader probes.
+- [Offline diagnostic core](emrag/diagnostics.py) and [diagnostic CLI](emrag/diagnose_cli.py) — scores and decisions reconstructed without further model calls.
+- [Reader probe](emrag/reader_probe.py) — opt-in, hard-budget, paired tests on saved active quotes, all quotes and available raw passages. No gold is sent to the Reader.
+- [Engine instrumentation](emrag/engine.py) — per-round rejection reason traces and optional raw source passage snapshots via --record-documents.
+
+Example first action on **existing** cached 500-question trajectories (replace paths/dataset):
+
+~~~bash
+python -m emrag.diagnose_cli \
+  --traces outputs/pubmedqa-emrag/traces.jsonl \
+  --benchmark ../MedRGAG/benchmark.json --dataset pubmedqa \
+  --per-stratum 6 --seed 2026 \
+  --output outputs/mechanism-dev
+~~~
+
+This does **not** retrain or rerun EM-RAG and does not infer factual sufficiency from the model judge. If older traces lack source passages, use --medrgag-first-turn-cache for an explicitly marked **first-round-only** view; missing later passages remain unknown. Evaluation stays paused until a causal bottleneck is established on a development sample.
+ The same frozen model can be used for planning, extraction, generation and verification, though their errors may remain correlated.
 
 ## What is implemented?
 
@@ -145,6 +167,8 @@ Do **not** compare an abstention-enabled policy only by its selective accuracy: 
 Each run writes:
 
 - run_config.json: selected dataset and inference/retrieval configuration, excluding API credentials.
+- Optional raw source passages: only with the explicit --record-documents flag; copyrighted/private passages should remain outside version control.
+- Optional rejection reasons in each round, for directly diagnosing false reject/false accept mechanisms.
 - traces.jsonl: one record per question (round-0 baseline, queries, passage IDs, grounded evidence, new proposals, support/refutation scorecards, accepted/preserved/invalidated actions).
 - metrics.json: per-round accuracy, unconditional and conditional harm/rescue rates, delta accuracy, coverage, verified coverage, mean model calls, and oracle best-prefix accuracy.
 

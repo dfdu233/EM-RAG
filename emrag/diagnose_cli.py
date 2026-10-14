@@ -12,7 +12,7 @@ from typing import Any
 from .cli import load_benchmark
 from .diagnostics import (
     annotation_template, audit_casebook, load_annotations, read_traces,
-    report_cases, stratified_sample,
+    report_cases, stratified_sample, hydrate_medrgag_first_turn,
 )
 
 
@@ -55,6 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--per-stratum", type=int, default=6)
     p.add_argument("--seed", type=int, default=2026)
     p.add_argument("--annotations", help="Existing manual audit annotations JSONL")
+    p.add_argument("--medrgag-first-turn-cache",
+                   help="Optional MedRGAG snippets.json: audit only the initial retrieved passages")
     p.add_argument("--fixed-manifest", help="Re-use these SAME IDs for another analysis")
     p.add_argument("--original-margin", type=int,
                    help="Read-only: if run_config.json absent, specify ORIGINAL gate margin")
@@ -66,6 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     rows = read_traces(args.traces)
+    hydration = (hydrate_medrgag_first_turn(rows, args.medrgag_first_turn_cache)
+                 if args.medrgag_first_turn_cache else None)
     # Loading all gold labels is post-hoc only. Gold is NEVER given to the engine.
     _, all_gold = load_benchmark(args.benchmark, args.dataset, limit=None)
     gold = {str(row["id"]): all_gold[str(row["id"])] for row in rows}
@@ -95,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     stats["recorded_gate_margin_available"] = recorded_margin is not None
     stats["purpose"] = args.purpose
     stats["no_models_called"] = True
+    stats["first_turn_cache_hydration"] = hydration
     stats["source_traces"] = str(Path(args.traces).resolve())
 
     if args.fixed_manifest:

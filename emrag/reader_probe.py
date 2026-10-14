@@ -113,8 +113,12 @@ def run_probes(rows: list[dict], model: Model, gold: Mapping[str, str],
         q = Question(qid, str(row["question"]), row["options"])
         if qid not in gold:
             raise KeyError(f"No gold label for {qid}")
-        for condition in conditions:
-            prompt = probe_prompt(row, condition, max_chars=max_chars)
+        prepared = [(condition, probe_prompt(row, condition, max_chars=max_chars))
+                    for condition in conditions]
+        # Avoid partially allocating the call budget across evidence conditions
+        # for a question; incomplete comparisons can bias a paired analysis.
+        budget_blocked = calls + sum(prompt is not None for _, prompt in prepared) > max_calls
+        for condition, prompt in prepared:
             if prompt is None:
                 results.append({
                     "id": qid, "condition": condition, "status": "context_unavailable",
@@ -123,7 +127,7 @@ def run_probes(rows: list[dict], model: Model, gold: Mapping[str, str],
                         "active_context_sufficient" if condition == "active_quotes"
                         else "retrieved_sufficient", "unknown")})
                 continue
-            if calls >= max_calls:
+            if budget_blocked:
                 results.append({
                     "id": qid, "condition": condition, "status": "skipped_budget",
                     "choice": None, "correct": None})
@@ -166,12 +170,35 @@ def summarize_probes(probes: list[dict]) -> dict:
             "missing_context_count": sum(p["status"] == "context_unavailable" for p in items),
             "budget_skipped_count": sum(p["status"] == "skipped_budget" for p in items),
         }
+    by_id: dict[str, dict] = {}
+    for item in probes:
+        by_id.setdefault(item["id"], {})[item["condition"]] = item
+
+    def paired(first: str, second: str) -> dict:
+        pairs = [(by_id[qid][first], by_id[qid][second])
+                 for qid in by_id if first in by_id[qid] and second in by_id[qid]
+                 and by_id[qid][first]["status"] == "ok"
+                 and by_id[qid][second]["status"] == "ok"]
+        return {
+            "n": len(pairs),
+            "second_fixes_first": sum(not a["correct"] and b["correct"] for a, b in pairs),
+            "second_breaks_first": sum(a["correct"] and not b["correct"] for a, b in pairs),
+            "paired_accuracy_delta": (
+                sum(int(b["correct"]) - int(a["correct"]) for a, b in pairs) / len(pairs)
+                if pairs else None),
+            "is_probing_effect_not_deployment_effect": True,
+        }
+
     return {
         "note": "Probe answers are model outputs, not oracle labels; "
                 "causal attribution requires independent evidence audits.",
         "total_calls_attempted": sum(p["status"] not in (
             "context_unavailable", "skipped_budget") for p in probes),
         "conditions": summaries,
+        "paired_interventions": {
+            "active_quotes_to_all_quotes": paired("active_quotes", "all_quotes"),
+            "active_quotes_to_raw_documents": paired("active_quotes", "raw_documents"),
+        },
     }
 
 

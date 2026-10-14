@@ -103,6 +103,7 @@ class RoundTrace:
     disputes: list[str] = field(default_factory=list)
     active_evidence_ids: list[str] = field(default_factory=list)
     model_calls: int = 0
+    decision_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -116,6 +117,9 @@ class RunResult:
     traces: list[RoundTrace]
     evidence: list[Evidence]
     model_calls: int
+    # Opt-in raw passage snapshots for independent retrieval sufficiency review.
+    # Empty for old traces and standard low-storage/privacy-preserving runs.
+    documents: list[Document] = field(default_factory=list)
 
     def to_record(self) -> dict[str, Any]:
         return asdict(self)

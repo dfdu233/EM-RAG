@@ -11,6 +11,7 @@ from .model import Model, request_json
 from .prompts import (SYSTEM_PLAN, SYSTEM_EXTRACT, SYSTEM_ANSWER, SYSTEM_JUDGE,
                       plan_prompt, extraction_prompt, answer_prompt, judge_prompt, answer_choice)
 from .retrieval import Retriever
+from .diagnostics import blocking_reasons
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class EMRAGConfig:
     stable_rounds: int = 2
     unverified_policy: str = "baseline"  # baseline or abstain
     update_policy: str = "evidence"  # evidence | latest | frozen
+    record_documents: bool = False  # explicit consent for raw passage trace snapshots
 
     def __post_init__(self) -> None:
         for key in ("max_rounds", "queries_per_round", "docs_per_query",
@@ -250,6 +252,14 @@ class EMRAG:
             scores = {choice: {**asdict(card), "score": card.score,
                                "eligible": card.eligible(cfg.min_support)}
                       for choice, card in cards.items()}
+            reasons = []
+            if proposal and proposal != old_selected and proposal != selected:
+                if cfg.update_policy == "frozen":
+                    reasons = ["frozen_policy"]
+                elif cfg.update_policy == "evidence":
+                    reasons = blocking_reasons(
+                        {"scores": scores, "action": action}, proposal,
+                        old_selected, cfg.min_score_margin)
             traces.append(RoundTrace(
                 round=round_id, queries=queries,
                 retrieved_doc_ids=[d.id for d in new_docs],
@@ -257,7 +267,7 @@ class EMRAG:
                 proposed_choice=proposal, selected_choice=selected, status=status,
                 action=action, scores=scores, missing_facts=missing,
                 disputes=disputes, active_evidence_ids=[e.id for e in active],
-                model_calls=self._calls))
+                model_calls=self._calls, decision_reasons=reasons))
             stable_count = stable_count + 1 if selected == old_selected and status == "verified" else 0
             if cfg.stop_on_verified and stable_count >= cfg.stable_rounds:
                 break
@@ -274,4 +284,5 @@ class EMRAG:
         return RunResult(id=question.id, question=question.question,
                          options=dict(question.options), baseline=baseline,
                          selected=selected, status=status, traces=traces,
-                         evidence=list(ledger.evidence.values()), model_calls=self._calls)
+                         evidence=list(ledger.evidence.values()), model_calls=self._calls,
+                         documents=list(ledger.documents.values()) if cfg.record_documents else [])

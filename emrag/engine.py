@@ -105,10 +105,15 @@ class EMRAG:
         return queries, missing, disputes
 
     def _search(self, question: Question, queries: list[str]) -> list[Document]:
+        # Interleave each query\'s top-ranked hits to prevent early queries from
+        # exhausting the document budget before discriminating queries are read.
+        groups = [self.retriever.search(query, self.config.docs_per_query,
+                                        question_id=question.id) for query in queries]
         docs: list[Document] = []
-        for query in queries:
-            docs.extend(self.retriever.search(
-                query, self.config.docs_per_query, question_id=question.id))
+        for rank in range(self.config.docs_per_query):
+            for group in groups:
+                if rank < len(group):
+                    docs.append(group[rank])
         return docs
 
     def _extract(self, question: Question, docs: list[Document]) -> list[dict[str, Any]]:

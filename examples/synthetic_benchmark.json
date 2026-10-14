@@ -1,0 +1,10 @@
+{
+  "synthetic": {
+    "q1": {
+      "id": "q1",
+      "question": "Within this FICTIONAL example only, which drug is contraindicated for patients with condition Y?",
+      "options": {"A": "Drug X", "B": "Drug Q"},
+      "answer": "A"
+    }
+  }
+}

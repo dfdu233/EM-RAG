@@ -74,11 +74,22 @@ def extraction_prompt(question: Question, docs: list[Document],
             + "\n\n".join(blocks))
 
 
-def answer_prompt(question: Question, evidence: list[Evidence]) -> str:
-    return ("QUESTION:\n" + question.formatted()
-            + "\n\nEXTERNAL QUOTED EVIDENCE (may be incomplete):\n"
-            + ("\n".join(format_evidence(e) for e in evidence) or "(none)")
-            + "\nOutput a single choice JSON.")
+def answer_prompt(question: Question, evidence: list[Evidence],
+                  generated_background: list[str] | None = None) -> str:
+    # WITHOUT GAG the prompt is byte-for-byte the original v0.1 prompt.
+    prompt = ("QUESTION:\n" + question.formatted()
+              + "\n\nEXTERNAL QUOTED EVIDENCE (may be incomplete):\n"
+              + ("\n".join(format_evidence(e) for e in evidence) or "(none)"))
+    if generated_background:
+        prompt += (
+            "\n\nUNVERIFIED MODEL-GENERATED BACKGROUND (PARAMETRIC KNOWLEDGE, "
+            "NOT RETRIEVED EVIDENCE):\n"
+            + "\n".join(f"Generated background [{i + 1}]: {body}"
+                        for i, body in enumerate(generated_background))
+            + "\nThis background may be inaccurate. It may help propose an "
+              "answer but is not independent source support and must not "
+              "override directly contradictory retrieved evidence.")
+    return prompt + "\nOutput a single choice JSON."
 
 
 def judge_prompt(question: Question, evidence: list[Evidence]) -> str:

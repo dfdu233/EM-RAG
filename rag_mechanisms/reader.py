@@ -74,7 +74,17 @@ class PromptBuilder:
             raise ValueError(f"prompt_exceeds_char_budget:{len(full)}")
         tokens = None
         if self.tokenizer is not None:
-            tokens = len(self.tokenizer.encode(full, add_special_tokens=False))
+            # Count the actual chat wrapper when available; plain user-text
+            # tokenization underestimates context usage for chat models.
+            if getattr(self.tokenizer, "chat_template", None):
+                tokens = len(self.tokenizer.apply_chat_template(
+                    [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": full},
+                    ], tokenize=True, add_generation_prompt=True))
+            else:
+                tokens = len(self.tokenizer.encode(
+                    full, add_special_tokens=False))
             if tokens > self.max_input_tokens:
                 raise ValueError(f"prompt_exceeds_token_budget:{tokens}")
         return Prompt(

@@ -86,7 +86,8 @@ class Sufficiency:
 
 
 def _key_documents(k: int, raw: dict, visible: list[Passage],
-                   labels: tuple[str, ...]) -> Sufficiency:
+                   labels: tuple[str, ...],
+                   excerpt_chars: int | None = None) -> Sufficiency:
     allowed = {d.id: d for d in visible}
     key: list[str] = []
     evidence_count = 0
@@ -100,7 +101,10 @@ def _key_documents(k: int, raw: dict, visible: list[Passage],
             if (not isinstance(doc_id, str) or doc_id not in allowed
                     or not isinstance(quote, str)
                     or not 3 <= len(quote) <= 650
-                    or quote not in allowed[doc_id].text):
+                    or quote not in (
+                        allowed[doc_id].text[:excerpt_chars]
+                        if excerpt_chars is not None
+                        else allowed[doc_id].text)):
                 continue
             # Checking exact-source substring prevents invented citations.
             evidence_count += 1
@@ -169,7 +173,9 @@ class CoverageAdaptiveMedRGAG:
                 k=len(visible), proxy_sufficient=False, claimed_choice=None,
                 key_ids=(), valid_quote_count=0, missing_facts=(),
                 claimed_sufficient=False, parse_error=True)
-        return _key_documents(len(visible), raw, visible, q.labels)
+        return _key_documents(
+            len(visible), raw, visible, q.labels,
+            excerpt_chars=self.config.probe_excerpt_chars)
 
     def _select(self, q: Question, candidates: list[Passage]) -> tuple[int, ...]:
         if len(candidates) != 10 or self.auxiliary is None:

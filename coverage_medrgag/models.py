@@ -94,11 +94,16 @@ def parse_selection(text: str, candidate_count: int, limit: int = 5
     except ValueError:
         pass
     if raw is None:
+        # Validate the WHOLE KADS selection line, not a valid prefix:
+        # otherwise "Final Selection: [0] [INVALID]" silently becomes [0].
         match = re.search(
-            r"Final\s+Selection\s*:\s*((?:\[\s*\d+\s*\]\s*)+)",
+            r"Final\s+Selection\s*:\s*([^\r\n]+)",
             text, flags=re.IGNORECASE)
         if match:
-            raw = [int(x) for x in re.findall(r"\d+", match.group(1))]
+            line = match.group(1).strip()
+            if not re.fullmatch(r"(?:\[\s*\d+\s*\]\s*)+", line):
+                raise ValueError("Malformed KADS selection line")
+            raw = [int(x) for x in re.findall(r"\d+", line)]
     if (not isinstance(raw, list) or not 1 <= len(raw) <= limit
             or any(type(x) is not int or x < 0 or x >= candidate_count for x in raw)
             or len(set(raw)) != len(raw)):

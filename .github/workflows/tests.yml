@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'research/medrgag-scaling-mechanisms']
   pull_request:
 
 jobs:

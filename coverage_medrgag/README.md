@@ -43,7 +43,14 @@ OFFLINE measurement. They are NOT model inputs, calibrated per-instance
 probabilities, or learned reward signals in this prototype.**
 
 At inference, the coverage observer produces only a FALLIBLE source-only
-sufficiency proxy. To label evidence 'sufficient', it must include a valid
+sufficiency proxy. Crucially, these runs read the ORIGINAL PRECOMPUTED
+ranked top-32 retrieval cache. Choosing K=5 at inference does NOT save the
+cost of BM25 retrieval/MedCPT reranking that produced that cache. Therefore
+initial results test **evidence-exposure scaling and auxiliary-call tradeoffs**,
+NOT proven runtime index-search cost savings. Actual end-to-end dynamic
+retrieval cost requires a separate live-index implementation and measurement.
+
+To label evidence 'sufficient', it must include a valid
 answer label, no remaining declared missing facts, and at least one exact
 quote from a seen retrieval source. Verbatim matching stops fabricated IDs
 but does not establish medical entailment. Proxy error can cause premature
@@ -139,6 +146,11 @@ python -m coverage_medrgag.cli run \
 
 The auxiliary model here is a PLACEHOLDER based on your previous model
 choice; ensure the actual provider endpoint/key is configured and supported.
+If the auxiliary model endpoint rejects seed or temperature, add
+--aux-omit-seed --aux-omit-temperature to BOTH static and adaptive runs;
+these settings are recorded in run_config.json and must be equal across
+those arms. Use --reader-omit-seed only when strictly necessary and
+report that this breaks exact MedRGAG sampling parity.
 The static arm makes one live KADS auxiliary call; it does NOT call
 the new source-sufficiency observer.
 

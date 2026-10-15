@@ -21,9 +21,10 @@ all = ["openai>=1.50,<3", "pytest>=8,<10"]
 emrag = "emrag.cli:main"
 emrag-diagnose = "emrag.diagnose_cli:main"
 emrag-reader-probe = "emrag.reader_probe:main"
+coverage-medrgag = "coverage_medrgag.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["emrag*"]
+include = ["emrag*", "coverage_medrgag*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

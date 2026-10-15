@@ -223,7 +223,7 @@ def command_report(args) -> None:
 
 
 def command_audit(args) -> None:
-    from .audit import prepare_casebook
+    from .audit import prepare_casebook, annotation_template
     questions, gold = load_benchmark(args.benchmark, args.dataset)
     cache = load_ranked_cache(args.retrieval_cache)
     value, text = prepare_casebook(
@@ -232,6 +232,7 @@ def command_audit(args) -> None:
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     write_jsonl(out / "audit_manifest.jsonl", value)
+    write_jsonl(out / "annotations_template.jsonl", annotation_template(value))
     (out / "casebook.md").write_text(text, encoding="utf-8")
     print(json.dumps({"audit_cases": len(value), "casebook": str(out / "casebook.md"),
                       "warning": "Manual source sufficiency labels required"},

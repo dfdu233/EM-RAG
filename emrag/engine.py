@@ -60,9 +60,11 @@ class EMRAG:
         self._calls += 1
         return request_json(self.model, system, user)
 
-    def _propose(self, question: Question, evidence: list[Evidence]) -> str | None:
+    def _propose(self, question: Question, evidence: list[Evidence],
+                 generated_background: list[str] | None = None) -> str | None:
         try:
-            payload = self._json(SYSTEM_ANSWER, answer_prompt(question, evidence))
+            payload = self._json(
+                SYSTEM_ANSWER, answer_prompt(question, evidence, generated_background))
         except ValueError:
             return None
         return answer_choice(payload, question.labels)
@@ -191,7 +193,8 @@ class EMRAG:
             return current, "unverified", "support_lost", set()
         return current, status, "preserved", set(old.support_ids) if old else set()
 
-    def run(self, question: Question, *, kgcc_hints: list[str] | None = None) -> RunResult:
+    def run(self, question: Question, *, kgcc_hints: list[str] | None = None,
+            gag_background: list[str] | None = None) -> RunResult:
         cfg = self.config
         self._calls = 0
         ledger = EvidenceLedger()
@@ -228,7 +231,10 @@ class EMRAG:
                 self._extract(question, new_docs)) if new_docs else []
             empty_rounds = 0 if new_claims else empty_rounds + 1
             active = ledger.select(cfg.max_active_claims, cfg.max_context_chars, protected)
-            proposal = self._propose(question, active) if active else None
+            # GAG is allowed to influence the Reader candidate ONLY.
+            # Judge and EvidenceLedger still receive retrieved quotes only.
+            proposal = (self._propose(question, active, gag_background)
+                        if active or gag_background else None)
             if proposal:
                 proposals.add(proposal)
             cards = self._judge(question, active) if active else {}

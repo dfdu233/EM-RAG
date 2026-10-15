@@ -133,7 +133,7 @@ def census(questions: dict[str, Question],
                 "retrieved_characters": sum(len(d.text) for d in prefix),
                 "unique_sources": len({d.source for d in prefix}),
                 "duplicate_fraction": (
-                    1 - len({" ".join(d.text.split()).casefold() for d in prefix)
+                    1 - len({" ".join(d.text.split()).casefold() for d in prefix})
                     / len(prefix)) if prefix else 0.0,
             })
     summaries = {}

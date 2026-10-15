@@ -125,7 +125,8 @@ def _run(args) -> int:
             raise ValueError("Trace contains IDs outside the frozen manifest")
     tokenizer = _load_reader_tokenizer(args.reader_tokenizer)
     reader = OpenAIChat(
-        args.reader_model, base_url=args.api_base, api_key=args.api_key)
+        args.reader_model, base_url=args.api_base, api_key=args.api_key,
+        send_seed=not args.reader_omit_seed)
     aux = None
     if args.mode != "reference":
         if not args.aux_model:
@@ -133,7 +134,9 @@ def _run(args) -> int:
         aux = OpenAIChat(
             args.aux_model,
             base_url=args.aux_api_base or args.api_base,
-            api_key=args.aux_api_key or args.api_key)
+            api_key=args.aux_api_key or args.api_key,
+            send_seed=not args.aux_omit_seed,
+            send_temperature=not args.aux_omit_temperature)
     ranker = (IdentityRanker() if args.no_rerank else
               MedCPTReranker(args.ranker_model, device=args.ranker_device))
     engine = CoverageAdaptiveMedRGAG(
@@ -212,9 +215,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-new-examples", type=int, default=100,
                      help="Per invocation work cap; resume by repeating same command")
     run.add_argument("--reader-model", required=True)
+    run.add_argument("--reader-omit-seed", action="store_true",
+                     help="Provider compatibility only; forfeits exact MedRGAG seed parity")
     run.add_argument("--api-base", default=os.environ.get("OPENAI_BASE_URL"))
     run.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
     run.add_argument("--aux-model")
+    run.add_argument("--aux-omit-seed", action="store_true",
+                     help="Some reasoning endpoints reject seed")
+    run.add_argument("--aux-omit-temperature", action="store_true",
+                     help="Some reasoning endpoints reject temperature")
     run.add_argument("--aux-api-base")
     run.add_argument("--aux-api-key", default=os.environ.get("AUX_OPENAI_API_KEY"))
     run.add_argument("--ranker-model", default="ncbi/MedCPT-Cross-Encoder")

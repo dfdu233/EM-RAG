@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'exp/v1-gag-reader-only']
   pull_request:
 
 jobs:

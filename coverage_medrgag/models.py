@@ -16,7 +16,8 @@ class ChatModel(Protocol):
 
 class OpenAIChat:
     def __init__(self, model: str, *, base_url: str | None = None,
-                 api_key: str | None = None, timeout: float = 180.0):
+                 api_key: str | None = None, timeout: float = 180.0,
+                 send_seed: bool = True, send_temperature: bool = True):
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -32,19 +33,22 @@ class OpenAIChat:
         self.client = OpenAI(**kwargs)
         self.model = model
         self.calls = 0
+        self.send_seed = send_seed
+        self.send_temperature = send_temperature
 
     def complete(self, system: str, user: str, *, temperature: float = 0.0,
                  seed: int | None = None, max_tokens: int = 512) -> str:
         options = {
             "model": self.model,
-            "temperature": temperature,
             "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
-        if seed is not None:
+        if self.send_temperature:
+            options["temperature"] = temperature
+        if self.send_seed and seed is not None:
             options["seed"] = seed
         self.calls += 1
         result = self.client.chat.completions.create(**options)

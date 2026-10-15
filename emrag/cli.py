@@ -17,6 +17,7 @@ import sys
 from .core import Question
 from .engine import EMRAG, EMRAGConfig
 from .metrics import summarize, summarize_actions
+from .gag import load_generated_snippets, bounded_background
 from .model import OpenAICompatibleModel
 from .retrieval import (JSONLBM25Retriever, MedRGAGRetriever,
                         MedRGAGSeedRetriever, load_kgcc_hints)
@@ -88,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["MedText", "Textbooks", "Wikipedia"])
     p.add_argument("--live-medrgag-root", help="For cached first-turn + live follow-up")
     p.add_argument("--kgcc-hints", help="MedRGAG generated snippets JSON; search hints ONLY")
+    p.add_argument("--gag-generated-cache",
+                   help="MedRGAG outputs/<dataset>/docs/generate/snippets.json; "
+                        "unverified background for Reader ONLY, never for Gate")
+    p.add_argument("--gag-max-docs", type=int, default=3)
+    p.add_argument("--gag-max-chars", type=int, default=1500)
     p.add_argument("--max-rounds", type=int, default=4)
     p.add_argument("--queries-per-round", type=int, default=2)
     p.add_argument("--docs-per-query", type=int, default=5)
@@ -123,7 +129,22 @@ def main(argv: list[str] | None = None) -> int:
         if live is None and args.max_rounds > 1:
             print("WARNING: cached first-turn retrieval without live follow-up; "
                   "this is NOT a valid multi-round retrieval comparison.", file=sys.stderr)
+    if args.gag_generated_cache and args.kgcc_hints:
+        raise ValueError("For the isolated Reader-GAG experiment do NOT also "
+                         "enable --kgcc-hints: it would change query planning.")
     hints = load_kgcc_hints(args.kgcc_hints) if args.kgcc_hints else {}
+    generated = (load_generated_snippets(args.gag_generated_cache)
+                 if args.gag_generated_cache else {})
+    gag_by_id = {}
+    if args.gag_generated_cache:
+        for q in questions:
+            passages = bounded_background(
+                generated.get(q.id, []), max_docs=args.gag_max_docs,
+                max_chars=args.gag_max_chars)
+            if not passages:
+                raise ValueError(f"Missing generated background for question {q.id}; "
+                                 "do not silently compare unequal GAG coverage.")
+            gag_by_id[q.id] = passages
     api_key = args.api_key
     if not api_key and args.api_base and ("localhost" in args.api_base or
                                           "127.0.0.1" in args.api_base):
@@ -143,13 +164,22 @@ def main(argv: list[str] | None = None) -> int:
     # Persist non-secret run arguments, so ablation budgets can be audited.
     public_args = {k: v for k, v in vars(args).items()
                    if k not in {"api_key", "api_base"}}
+    if args.gag_generated_cache:
+        from hashlib import sha256
+        public_args["gag_cache_sha256"] = sha256(
+            Path(args.gag_generated_cache).read_bytes()).hexdigest()
+        public_args["gag_mode"] = "reader_only"
+    else:
+        public_args["gag_mode"] = "off"
     with (out / "run_config.json").open("w", encoding="utf-8") as fp:
         json.dump({"args": public_args, "engine_config": asdict(config)},
                   fp, ensure_ascii=False, indent=2)
     results = []
     with (out / "traces.jsonl").open("w", encoding="utf-8") as fp:
         for index, q in enumerate(questions, start=1):
-            result = engine.run(q, kgcc_hints=hints.get(q.id, []))
+            result = engine.run(
+                q, kgcc_hints=hints.get(q.id, []),
+                gag_background=gag_by_id.get(q.id))
             results.append(result)
             fp.write(json.dumps(result.to_record(), ensure_ascii=False) + "\n")
             fp.flush()

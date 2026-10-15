@@ -200,6 +200,42 @@ counts, paired question-level bootstrap confidence intervals, cost and
 prompt lengths, nonmonotonic depth curves and an **offline oracle best K**.
 The oracle best K is strictly analysis-only and not deployable.
 
+### Cross-method baseline panel — verify a FIELD-WIDE failure, not one algorithm
+
+If you already have predictions for the MedRGAG paper's nine original
+methods under the SAME Reader, load their per-question prediction files
+without re-running a single model. Repeat for Qwen2.5, Llama3.1 and
+Ministral; never mix Reader model families or dataset splits.
+
+~~~bash
+python -m rag_mechanisms.panel \
+  --benchmark "$BENCH" --dataset "$DATA" \
+  --manifest "outputs/mech/$DATA/manifest.jsonl" \
+  --reader-label qwen2.5 \
+  --reference DirectResponse=/path/to/direct/prediction.json \
+  --reference VanillaRAG=/path/to/vanilla/prediction.json \
+  --reference MedRAG=/path/to/medrag/prediction.json \
+  --reference iMedRAG=/path/to/imedrag/prediction.json \
+  --reference GENREAD=/path/to/genread/prediction.json \
+  --reference MedGENIE=/path/to/medgenie/prediction.json \
+  --reference GRG=/path/to/grg/prediction.json \
+  --reference CGAP=/path/to/cgap/prediction.json \
+  --reference MedRGAG=/path/to/medrgag/prediction.json \
+  --output "outputs/mech/$DATA/cross_method_qwen.json"
+~~~
+
+Reference paths above are **placeholders**, not invented existing files.
+If only some baselines are available, supply only those plus DirectResponse.
+The output reports paired right-to-wrong, wrong-to-right, and question IDs
+affected by two or more methods. Unlike a benchmark aggregate, this tests
+whether negative transfer is shared across multiple method families.
+
+CAUTION: methods may use different retrieval and generation budgets; the
+panel demonstrates shared outcomes, not a controlled causal explanation.
+Use Phase 1 controlled depth interventions and Phase 2 source review to
+investigate possible mechanisms. Evaluate common effects across datasets
+AND across Readers before elevating one pattern into a paper Motivation.
+
 ### Phase 2 — HUMAN sufficiency audit (key for a scientific Motivation)
 
 ~~~bash

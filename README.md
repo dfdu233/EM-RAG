@@ -1,3 +1,25 @@
+# Coverage-Adaptive MedRGAG — NEW experimental research branch
+
+**This branch is not a replacement for the EM-RAG v0.1/v0.2 history.**
+The NEW minimal research prototype lives under
+[coverage_medrgag/](coverage_medrgag/README.md).
+
+It retains MedRGAG's full precomputed KGCC generation, original KADS
+selection template, original MedCPT Cross-Encoder re-ranking and original
+Reader prompt. Only a source-only evidence coverage signal controls how
+deeply into the ranked retrieval cache to inspect (K=5/10/20/32).
+One final Reader answer, no answer-update Gate, no additional model training.
+
+Three built-in modes: official precomputed KADS reference, live K5 KADS
+static control, and coverage-adaptive retrieval depth. Gold labels are
+isolated in a separate evaluator with explicit S(K)/U(K)/V(K) limitations.
+See [server commands and scientific controls](coverage_medrgag/README.md).
+
+All changes are isolated from the main branch. **No new benchmark scores
+or SOTA results have been established by this code release.**
+
+---
+
 # EM-RAG
 
 **Evidence-Monotonic RAG (EM-RAG)** is a **training-free research prototype** for making iterative retrieval more reliable as the number of search rounds grows. It integrates with the [MedRGAG (WWW 2026)](https://github.com/ll0ruc/MedRGAG) retrieval/data format.

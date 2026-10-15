@@ -1,3 +1,15 @@
+# Independent RAG mechanism investigation (research branch)
+
+**This branch is NOT an EM-RAG algorithm variant.** It contains a standalone,
+MedRGAG-paper-aligned investigation into cross-method acquisition, evidence
+utilization, and negative-transfer scaling. No EM-RAG Gate, context selector,
+training, or inference algorithm is used in the experiments.
+
+Begin here: [rag_mechanisms/README.md](rag_mechanisms/README.md).
+The default main branch and all earlier EM-RAG algorithm branches are unchanged.
+
+---
+
 # EM-RAG
 
 **Evidence-Monotonic RAG (EM-RAG)** is a **training-free research prototype** for making iterative retrieval more reliable as the number of search rounds grows. It integrates with the [MedRGAG (WWW 2026)](https://github.com/ll0ruc/MedRGAG) retrieval/data format.

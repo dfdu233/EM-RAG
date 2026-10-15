@@ -49,7 +49,7 @@ class CaptureModel:
 
 def test_gag_off_preserves_original_v1_reader_prompt():
     q = Question("q", "Which option?", {"A": "A label", "B": "B label"})
-    expected = (q.formatted() + "\n\nEXTERNAL QUOTED EVIDENCE "
+    expected = ("QUESTION:\n" + q.formatted() + "\n\nEXTERNAL QUOTED EVIDENCE "
                 "(may be incomplete):\n(none)\nOutput a single choice JSON.")
     assert answer_prompt(q, []) == expected
     assert "UNVERIFIED" not in answer_prompt(q, [])

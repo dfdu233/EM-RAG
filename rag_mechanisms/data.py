@@ -113,7 +113,7 @@ def load_ranked_cache(path: str | Path) -> dict[str, list[Passage]]:
             docs.append(Passage(
                 id=str(item.get("id", f"rank_{idx}")),
                 title=str(item.get("title", "")), text=text.strip(),
-                source=str(item.get("source") or item.get("corpus") or "MedRGAG"),
+                source=str(item.get("source") or item.get("corpus") or "UNKNOWN_SOURCE"),
                 score=score))
         out[str(key)] = docs
     return out

@@ -89,8 +89,10 @@ def test_adaptive_only_expands_budget_and_uses_one_reader_call():
     assert result["source_proxy_sufficient"] is True
     assert result["reader_calls"] == 1
     assert result["auxiliary_calls"] == 3
-    assert "Source 8" not in reader.requests[0][1] or (
-        "Source 8" in reader.requests[0][1])
+    # An original KADS selection can still discard the decisive quote;
+    # log this limitation rather than falsely claiming final context sufficiency.
+    assert result["source_key_quote_preserved_after_KADS"] is False
+    assert "Source 8 says fabricated fact" not in reader.requests[0][1]
 
 
 def test_fabricated_quotes_do_not_stop_retrieval():

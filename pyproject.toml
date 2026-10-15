@@ -23,7 +23,7 @@ emrag-diagnose = "emrag.diagnose_cli:main"
 emrag-reader-probe = "emrag.reader_probe:main"
 
 [tool.setuptools.packages.find]
-include = ["emrag*"]
+include = ["emrag*", "rag_mechanisms*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

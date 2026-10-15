@@ -109,6 +109,17 @@ def report(path: str, dataset: str, gold: dict[str, str],
     condition_stats = {}
     for name, predictions in sorted(by_condition.items()):
         sample = list(predictions.items())
+        # Always report per-label recall; Yes/No accuracy alone can conceal
+        # majority-class collapse in BioASQ.
+        per_label = {}
+        observed_labels = sorted({gold[qid] for qid, _ in sample})
+        for label in observed_labels:
+            subset = [(qid, row) for qid, row in sample if gold[qid] == label]
+            per_label[label] = {
+                "n": len(subset),
+                "recall": sum(row.get("prediction") == label for _, row in subset)
+                          / len(subset)
+            }
         condition_stats[name] = {
             "n": len(sample),
             "accuracy": mean(_correct(row, gold[qid]) for qid, row in sample),
@@ -124,6 +135,9 @@ def report(path: str, dataset: str, gold: dict[str, str],
             "total_billed_completion_tokens": sum(
                 row.get("completion_tokens_billed") or 0 for _, row in sample),
             "source_type": sample[0][1]["source_type"],
+            "per_gold_label_recall": per_label,
+            "macro_recall": (mean(x["recall"] for x in per_label.values())
+                             if len(per_label) >= 2 else None),
         }
     comparisons = {}
     for name, predictions in sorted(by_condition.items()):
@@ -193,6 +207,8 @@ def report(path: str, dataset: str, gold: dict[str, str],
         "conditions": {name: {
             "n": x["n"], "accuracy": x["accuracy"],
             "mean_context_chars": x["mean_context_chars"],
+            "macro_recall": x["macro_recall"],
+            "per_gold_label_recall": x["per_gold_label_recall"],
         } for name, x in condition_stats.items()},
         "depth_behaviour": curving,
         "unavailable_or_over_budget": len(invalid_records),

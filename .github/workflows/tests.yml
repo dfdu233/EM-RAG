@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/coverage-adaptive-medrgag']
   pull_request:
 
 jobs:
@@ -19,6 +19,6 @@ jobs:
       - name: Install package and tests
         run: python -m pip install -e '.[test]'
       - name: Compile Python sources
-        run: python -m compileall -q emrag
+        run: python -m compileall -q emrag coverage_medrgag
       - name: Run offline tests
         run: python -m pytest -q

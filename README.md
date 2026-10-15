@@ -6,6 +6,21 @@
 
 **Research-only, not for patient care.** No trained gate, value network, specialized judge, or fine-tuning is needed. The same frozen model can be used for planning, extraction, generation and verification, though their errors may remain correlated.
 
+
+## Experimental v0.1 + GAG: Reader-only, original Gate unchanged
+
+This branch starts from the original v0.1 commit and tests ONE change:
+reuse existing MedRGAG KGCC-generated background documents in the post-retrieval
+Reader prompt. Generated material **does not enter EvidenceLedger** and is
+**not accepted as source evidence by the Judge**. No new algorithm, trained
+module, or threshold change has been introduced.
+
+Run the four-arm development-only ablation (GAG on/off × evidence Gate/latest
+answer), using **one retrieval round and identical cached documents**.
+See [controlled commands and interpretation](docs/v1_gag_experiment.md).
+The original main branch remains unchanged; do not claim a performance gain
+without evaluating paired Reader proposals and accepted answers.
+
 ## What is implemented?
 
 The question stays fixed while an independent evidence ledger grows:

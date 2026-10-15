@@ -95,6 +95,9 @@ def _run(args) -> int:
             "Use --reader-tokenizer for exact MedRGAG truncation."
         ),
     }
+    # JSON round-trip normalizes tuples (e.g. depth budgets) to lists so that
+    # an IDENTICAL repeated invocation can safely resume its saved config.
+    signature = json.loads(json.dumps(signature, ensure_ascii=False))
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     meta = out / "run_config.json"

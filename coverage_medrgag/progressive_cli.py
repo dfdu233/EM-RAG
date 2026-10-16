@@ -13,10 +13,35 @@ import os
 from pathlib import Path
 from time import perf_counter
 
-from .data import DATASETS, MedRGAGCaches, benchmark, fingerprint, templates
+from .data import DATASETS, Question, MedRGAGCaches, fingerprint, templates
 from .models import OpenAIChat, MedCPTReranker, IdentityRanker
 from .progressive import ProgressiveSourceViews, Config
 from .live_retrieval import NativeMedRGAGBM25
+
+
+def _questions_without_gold(path: str | Path, dataset: str) -> dict[str, Question]:
+    """Read only question/options; NEVER inspect the benchmark answer field.
+
+    Evaluation loads gold in a separate post-hoc process.
+    """
+    if dataset not in DATASETS:
+        raise ValueError("Unknown MedRGAG dataset")
+    with Path(path).open(encoding="utf-8") as f:
+        section = json.load(f).get(dataset)
+    if not isinstance(section, dict):
+        raise ValueError("Missing MedRGAG benchmark dataset section")
+    questions = {}
+    for key, row in section.items():
+        if not isinstance(row, dict) or not isinstance(row.get("options"), dict):
+            raise ValueError("Malformed benchmark question/options")
+        labels = {str(k).upper(): str(v) for k, v in row["options"].items()}
+        if not labels or len(labels) != len(row["options"]):
+            raise ValueError("Invalid answer option labels")
+        text = row.get("question")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Empty question")
+        questions[str(key)] = Question(str(key), text, labels)
+    return questions
 
 
 def _frozen_ids(path: str | Path, dataset: str) -> list[str]:
@@ -61,7 +86,7 @@ def _run(args) -> int:
         context_tokens=args.context_tokens,
         max_prompt_chars=args.max_prompt_chars,
         temperature=args.temperature, seed=args.seed)
-    questions, _ = benchmark(source_paths["benchmark"], args.dataset)
+    questions = _questions_without_gold(source_paths["benchmark"], args.dataset)
     if args.ids_file:
         ids = _frozen_ids(args.ids_file, args.dataset)
         if set(ids) - set(questions):

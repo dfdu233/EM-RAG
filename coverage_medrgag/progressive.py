@@ -376,8 +376,12 @@ class ProgressiveSourceViews:
                     break
         else:
             anchor_docs = stable_anchor[:cfg.anchor_docs_per_view]
-        if len(anchor_docs) != cfg.anchor_docs_per_view:
+        if not anchor_docs or (
+                cfg.anchor_mode == "retrieved_only" and
+                len(anchor_docs) != cfg.anchor_docs_per_view):
             raise ValueError("Insufficient original source anchors for this view")
+        # Original PSV gracefully allowed a historical KADS list shorter
+        # than anchor_docs_per_view. Do not break that reference protocol.
         # Fixed-old-source counterfactual for the same anchor, document count
         # and frozen Reader. With an original KADS anchor this is exactly B0.
         control_fill = []

@@ -68,6 +68,10 @@ def evaluate_progressive(predictions: str | Path, benchmark_path: str | Path,
                 "reader": int(entry.get("reader_calls_total", 0)),
                 "planner": int(entry.get("planner_calls_total", 0)),
                 "retrieval": int(entry.get("retrieval_calls_total", 0)),
+                "replay": bool(result.get("source_views_replayed", False)),
+                "replay_queries": (
+                    int(entry.get("queries_used_total", 0))
+                    if result.get("source_views_replayed", False) else 0),
             })
         views = result.get("novel_views", [])
         for stage in views:
@@ -90,6 +94,10 @@ def evaluate_progressive(predictions: str | Path, benchmark_path: str | Path,
             "mean_planner_calls": mean(x["planner"] for x in cost[round_no]),
             "mean_real_retrieval_calls": mean(x["retrieval"] for x in cost[round_no]),
             "mean_extra_reader_calls_vs_B0": mean(x["reader"]-1 for x in cost[round_no]),
+            "source_replay_fraction": mean(
+                int(x["replay"]) for x in cost[round_no]),
+            "mean_replayed_source_queries_not_new_searches": mean(
+                x["replay_queries"] for x in cost[round_no]),
         }
         if round_no:
             direct = paired(
@@ -171,5 +179,8 @@ def evaluate_progressive(predictions: str | Path, benchmark_path: str | Path,
             "both Harm and Rescue. A positive curve requires paired held-out "
             "tests with accurate total compute accounting. Original "
             "MedRGAG KGCC/KADS cache generation costs were excluded; "
-            "the current experiment does NOT directly scale corpus V."),
+            "the current experiment does NOT directly scale corpus V. "
+            "Exact-replay arms have zero ACTUAL planner/search calls in their "
+            "own run, but inherit source-acquisition cost from the original "
+            "live experiment. Do not compare replay costs to live budgets."),
     }

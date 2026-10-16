@@ -1,3 +1,18 @@
+# PSV v2 — Reliable Evidence and Matched Source Controls
+
+This independent research branch adds **query-length repair**, **uniform
+gold-free answer recovery**, **KGCC-free source anchors**, **five-document
+matched source controls**, and **exact selected-source replay** to
+[Progressive Source Views](coverage_medrgag/PROGRESSIVE.md).
+
+See the complete [PSV v2 experiment protocol](coverage_medrgag/PSV_V2.md).
+
+These changes have NOT been validated as improving biomedical accuracy.
+Replayed sources do not count as NEW BM25 searches and do not demonstrate
+a new inference-scaling law. The original PSV branch and main are unchanged.
+
+---
+
 # Progressive Source Views: Active MedRGAG Scaling Diagnostics
 
 This independent branch implements a training-free, testable RAG-GAG

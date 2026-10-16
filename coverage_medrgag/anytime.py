@@ -147,6 +147,7 @@ class AnytimeMedRGAG:
                 prefix_predictions.append({
                     "k": k, "prediction": output["prediction"],
                     "context_doc_ids": [d.id for d in incumbent],
+                    "ordered_doc_ids": output["ordered_ids"],
                     "utility": incumbent_utility,
                     "prompt_sha256": output["prompt_sha256"],
                     "prompt_chars": output["prompt_chars"],
@@ -160,7 +161,7 @@ class AnytimeMedRGAG:
             "raw_reader_output": prefix_predictions[-1]["raw_reader_output"],
             "prompt_sha256": prefix_predictions[-1]["prompt_sha256"],
             "prompt_chars": prefix_predictions[-1]["prompt_chars"],
-            "ordered_ids": prefix_predictions[-1]["context_doc_ids"],
+            "ordered_ids": prefix_predictions[-1]["ordered_doc_ids"],
         })
         previous_scores = [r["best_utility"] for r in trace]
         if any(y + 1e-12 < x for x, y in

@@ -34,7 +34,7 @@ _STOP = frozenset({
     "is", "are", "was", "were", "be", "been", "can", "could", "would",
     "should", "do", "does", "did", "have", "has", "had", "this", "that",
     "these", "those", "it", "its", "which", "what", "who", "whom",
-    "and", "or", "with", "as", "than", "not", "any", "there", "into",
+    "and", "or", "with", "as", "than", "any", "there", "into",
     "may", "might", "between", "among", "using", "used", "use", "most",
 })
 
@@ -42,8 +42,8 @@ _STOP = frozenset({
 def tokens(text: str) -> set[str]:
     """Set-valued lexical evidence features (NOT an entailment detector)."""
     return {term for term in _TOKENS.findall(text.lower())
-            if term not in _STOP and len(term) > 1 or
-            (len(term) == 1 and '\u4e00' <= term <= '\u9fff')}
+            if ((term not in _STOP and len(term) > 1) or
+                (len(term) == 1 and '\u4e00' <= term <= '\u9fff'))}
 
 
 def fixed_facets(q: Question, *, max_facets: int = 8) -> tuple[str, ...]:

@@ -24,6 +24,7 @@ emrag-reader-probe = "emrag.reader_probe:main"
 coverage-medrgag = "coverage_medrgag.cli:main"
 coverage-medrgag-anytime = "coverage_medrgag.anytime_cli:main"
 coverage-medrgag-progressive = "coverage_medrgag.progressive_cli:main"
+coverage-medrgag-abcd = "coverage_medrgag.abcd_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["emrag*", "coverage_medrgag*"]

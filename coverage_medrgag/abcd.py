@@ -239,9 +239,11 @@ _SURE_SYSTEM = (
     "characters. No paraphrase inside quotes. If there is no direct support "
     "or contradiction, return an empty list for the choice. "
     "Never cite generated KGCC. Do not assume any answer choice is correct. "
-    "Return JSON only: "
-    '{"choices":[{"choice":"A","quotes":[{"id":"n1_0",'
-    '"quote":"exact source substring","relation":"supports"}]}]}.'
+    "Return all options, each with a choice label from the ORIGINAL question "
+    "and a quotes list (possibly empty). Return JSON only with this shape: "
+    '{"choices":[{"choice":"<ORIGINAL CHOICE LABEL>",'
+    '"quotes":[{"id":"<SOURCE ID>","quote":"exact substring",'
+    '"relation":"supports"}]}]}.'
 )
 
 
@@ -429,6 +431,7 @@ class MedRGAGABCD:
                 "source_quote_count": 0,
                 "rejected_quotes": 0,
                 "source_quoted_note": "",
+                "reader_executed": False,
                 "prediction": None,
             }
             if query is not None:
@@ -505,6 +508,7 @@ class MedRGAGABCD:
                     result = self._answer(
                         q, view, option_notes=notes["text"])
                     stage.update({
+                        "reader_executed": True,
                         "prediction": result["prediction"],
                         "raw_reader_output": result["raw_reader_output"],
                         "selected_doc_ids": result["selected_doc_ids"],
@@ -522,7 +526,7 @@ class MedRGAGABCD:
                 "round": turn, "prediction": final_result["prediction"],
                 "base_prediction": original["prediction"],
                 "reason": ("new_evidence_reader_answer"
-                           if stage["prediction"] is not None
+                           if stage["reader_executed"]
                            else "no_new_evidence_previous_answer"),
                 "reader_calls_total": self.reader.calls - reader_before,
                 "planner_calls_total": (
@@ -533,7 +537,7 @@ class MedRGAGABCD:
                     if self.retriever else 0),
                 "selected_doc_ids": (
                     stage["selected_doc_ids"]
-                    if stage["prediction"] is not None
+                    if stage["reader_executed"]
                     else prefixes[-1]["selected_doc_ids"]),
             })
         return {

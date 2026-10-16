@@ -133,6 +133,8 @@ def test_actual_new_source_views_need_two_votes_before_overriding():
     assert len(result["novel_views"][0]["selected_doc_ids"]) == 5
     assert "PARAMETRIC KGCC IDEAS" in planner.requests[0][1]
     assert "Generated KGCC hypothesis" in planner.requests[0][1]
+    assert "UNVERIFIED READER ANSWER DISAGREEMENT" in planner.requests[1][1]
+    assert "alternate_views=['B']" in planner.requests[1][1]
     assert "ORIGINAL QUESTION" not in planner.requests[0][1]  # no hidden gold
     assert retrieval.queries[0][1] == 8
 

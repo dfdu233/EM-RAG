@@ -72,10 +72,10 @@ class Retriever:
             return [Passage("old", "Original document zero", "retrieved", "p0")]
         return [
             Passage(f"new{self.calls}_0",
-                    "After adjustment, effect persisted. Another background.",
+                    f"After adjustment, effect persisted. Round {self.calls} background.",
                     "retrieved", f"outside{self.calls}"),
             Passage(f"new{self.calls}_1",
-                    "No change occurred among the comparison population.",
+                    f"No change occurred among comparison population round {self.calls}.",
                     "retrieved", f"another{self.calls}"),
         ]
 

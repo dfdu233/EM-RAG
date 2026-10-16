@@ -325,7 +325,10 @@ class ProgressiveSourceViews:
         # and frozen Reader. With an original KADS anchor this is exactly B0.
         control_fill = []
         seen_control = {x.id for x in anchor_docs}
-        for candidate in stable_anchor + retrieved[:5] + generated[:5]:
+        old_fill_candidates = (
+            retrieved[:5] if cfg.anchor_mode == "retrieved_only"
+            else stable_anchor + retrieved[:5] + generated[:5])
+        for candidate in old_fill_candidates:
             if candidate.id not in seen_control:
                 control_fill.append(candidate)
                 seen_control.add(candidate.id)
@@ -401,9 +404,8 @@ class ProgressiveSourceViews:
                     for d in fresh)
                 stage["fresh_corpus_documents"] = source_records(fresh)
                 if fresh:
-                    # Every view is source-disjoint from previous NEW views.
-                    # Explicitly preserve up to 3 original KADS documents,
-                    # including its parametric knowledge when KADS chose it.
+                    # New views use either KADS anchors or SOURCE-ONLY anchors,
+                    # isolating whether shared KGCC induces correlated errors.
                     view_context = anchor_docs + fresh
                     if len(view_context) > cfg.max_reader_docs:
                         raise AssertionError("Context budget exceeded")

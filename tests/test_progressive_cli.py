@@ -144,3 +144,14 @@ def test_real_retriever_never_auto_builds_or_clones(tmp_path):
     from coverage_medrgag.live_retrieval import NativeMedRGAGBM25
     with pytest.raises(FileNotFoundError, match="Refusing automatic"):
         NativeMedRGAGBM25(medrgag_root=tmp_path, corpus_name="MedText")
+
+
+def test_inference_loader_never_interprets_gold_answers(tmp_path):
+    path = tmp_path / "invalid_gold.json"
+    path.write_text(json.dumps({"pubmedqa": {"x": {
+        "question": "What is known?", "options": {"A": "Yes", "B": "No"},
+        "answer": "THIS_IS_NOT_A_VALID_ANSWER_AND_MUST_NOT_BE_ACCESSED"
+    }}}), encoding="utf-8")
+    result = progressive_cli._questions_without_gold(path, "pubmedqa")
+    assert result["x"].text == "What is known?"
+    assert result["x"].labels == ("A", "B")

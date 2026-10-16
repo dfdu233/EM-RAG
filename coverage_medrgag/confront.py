@@ -361,6 +361,7 @@ class EvidenceConfrontedMedRGAG:
         rankercalls = self.ranker.calls
         base = self._original_medrgag(q, anchor)
         current = base["prediction"]
+        current_context_ids = list(base["ids"])
         prefix = [{
             "round": 0, "prediction": current,
             "base_prediction": base["prediction"],
@@ -441,11 +442,17 @@ class EvidenceConfrontedMedRGAG:
                         "source_prompt_sha256": external["prompt_sha256"],
                         "source_raw_reader_output": external["raw"],
                     })
+                    fresh_ids = {doc.id for doc in fresh}
+                    has_new_citation = any(
+                        cite["id"] in fresh_ids
+                        for cite in external["evidence_quotes"])
+                    stage["source_has_new_cited_evidence"] = has_new_citation
                     if cfg.policy == "latest":
                         # Explicit optimistic ablation to isolate the cost
                         # of evidence checks and adjudication.
                         if external["prediction"] is not None:
                             current = external["prediction"]
+                            current_context_ids = list(external["doc_ids"])
                             stage["decision"] = "latest_unverified_ablation"
                     elif external["prediction"] == current:
                         stage["decision"] = "source_agrees_with_prior"
@@ -453,14 +460,18 @@ class EvidenceConfrontedMedRGAG:
                         stage["decision"] = "source_abstains_or_unparseable"
                     elif not external["evidence_quotes"]:
                         stage["decision"] = "no_valid_exact_source_quote"
+                    elif not has_new_citation:
+                        stage["decision"] = "no_new_source_citation"
                     else:
                         stable = True
                         if cfg.order_check and len(docs) > 1:
                             reverse = self._source_answer(q, list(reversed(docs)))
                             stage["reversed_prediction"] = reverse["prediction"]
                             stage["reversed_citations"] = reverse["evidence_quotes"]
-                            stable = (reverse["prediction"] == external["prediction"]
-                                      and bool(reverse["evidence_quotes"]))
+                            stable = (
+                                reverse["prediction"] == external["prediction"]
+                                and any(cite["id"] in fresh_ids for cite
+                                        in reverse["evidence_quotes"]))
                         if not stable:
                             stage["decision"] = "order_sensitive_or_uncited"
                         else:
@@ -469,8 +480,10 @@ class EvidenceConfrontedMedRGAG:
                             stage["confront_citations"] = checked["evidence_quotes"]
                             stage["confront_raw_reader_output"] = checked["raw"]
                             if (checked["prediction"] == external["prediction"]
-                                    and checked["evidence_quotes"]):
+                                    and any(cite["id"] in fresh_ids for cite
+                                            in checked["evidence_quotes"])):
                                 current = external["prediction"]
+                                current_context_ids = list(external["doc_ids"])
                                 stage["decision"] = (
                                     "baseline_parse_recovered_via_cited_source"
                                     if base["prediction"] is None
@@ -489,12 +502,7 @@ class EvidenceConfrontedMedRGAG:
                 "retrieval_calls_total": (self.retriever.calls - searchcalls
                                           if self.retriever else 0),
                 "queries_used_total": len(queries),
-                "selected_doc_ids": (
-                    stage.get("source_doc_ids") if
-                    stage["decision"] in {
-                        "cited_confrontation_adopted",
-                        "baseline_parse_recovered_via_cited_source",
-                        "latest_unverified_ablation"} else base["ids"]),
+                "selected_doc_ids": list(current_context_ids),
             })
         return {
             "id": q.id, "mode": "evidence_confronted_medrgag",

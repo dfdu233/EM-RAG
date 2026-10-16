@@ -23,6 +23,7 @@ emrag-diagnose = "emrag.diagnose_cli:main"
 emrag-reader-probe = "emrag.reader_probe:main"
 coverage-medrgag = "coverage_medrgag.cli:main"
 coverage-medrgag-anytime = "coverage_medrgag.anytime_cli:main"
+coverage-medrgag-confront = "coverage_medrgag.confront_cli:main"
 coverage-medrgag-progressive = "coverage_medrgag.progressive_cli:main"
 
 [tool.setuptools.packages.find]

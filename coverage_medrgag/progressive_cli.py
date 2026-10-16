@@ -82,6 +82,10 @@ def _run(args) -> int:
         anchor_docs_per_view=args.anchor_docs_per_view,
         planner_mode=args.planner_mode,
         policy=args.policy,
+        anchor_mode=args.anchor_mode,
+        paired_source_control=args.paired_source_control,
+        query_size_policy=args.query_size_policy,
+        fresh_ranking=args.fresh_ranking,
         planner_excerpt_chars=args.planner_excerpt_chars,
         context_tokens=args.context_tokens,
         max_prompt_chars=args.max_prompt_chars,
@@ -262,8 +266,22 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--fresh-docs-per-view", type=int, default=2)
     run.add_argument("--planner-mode", choices=("kgcc", "question"),
                      default="kgcc")
-    run.add_argument("--policy", choices=("anchored_vote", "latest"),
+    run.add_argument("--policy",
+                     choices=("anchored_vote", "latest", "contrastive_vote"),
                      default="anchored_vote")
+    run.add_argument("--anchor-mode",
+                     choices=("original", "retrieved_only"),
+                     default="original",
+                     help="Source-only new views remove shared KGCC anchors; B0 unchanged")
+    run.add_argument("--paired-source-control", action="store_true",
+                     help="Matched five-document old-source control; may add one Reader call")
+    run.add_argument("--query-size-policy",
+                     choices=("compact", "reject"), default="compact",
+                     help="Compact overlong planner queries; reject is historical ablation")
+    run.add_argument("--fresh-ranking",
+                     choices=("question", "target_relation"),
+                     default="question",
+                     help="How to rerank newly fetched REAL source documents")
     run.add_argument("--planner-excerpt-chars", type=int, default=700)
     run.add_argument("--context-tokens", type=int, default=128000)
     run.add_argument("--max-prompt-chars", type=int, default=150000)

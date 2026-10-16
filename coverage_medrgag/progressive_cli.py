@@ -213,7 +213,8 @@ def _evaluate(args) -> int:
     from .progressive_eval import evaluate_progressive
     result = evaluate_progressive(
         args.predictions, args.benchmark, args.dataset,
-        bootstrap=args.bootstrap, seed=args.seed)
+        bootstrap=args.bootstrap, seed=args.seed,
+        compare=args.compare)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -291,11 +292,27 @@ def build_parser() -> argparse.ArgumentParser:
     ev = sub.add_parser("evaluate")
     ev.add_argument("--dataset", choices=DATASETS, required=True)
     ev.add_argument("--predictions", required=True)
+    ev.add_argument("--compare",
+                    help="Another PSV run with identical IDs/Reader/B0 prompts")
     ev.add_argument("--benchmark", required=True)
     ev.add_argument("--bootstrap", type=int, default=1000)
     ev.add_argument("--seed", type=int, default=2026)
     ev.add_argument("--output", required=True)
     ev.set_defaults(func=_evaluate)
+    replay = sub.add_parser(
+        "reparse",
+        help="Reparse frozen raw PSV answers uniformly, without gold or new API calls")
+    replay.add_argument("--dataset", choices=DATASETS, required=True)
+    replay.add_argument("--predictions", required=True)
+    replay.add_argument("--benchmark", required=True)
+    replay.add_argument("--output", required=True)
+    def do_reparse(a):
+        from .progressive_reparse import reparse_file
+        print(json.dumps(
+            reparse_file(a.predictions, a.benchmark, a.dataset, a.output),
+            ensure_ascii=False, indent=2))
+        return 0
+    replay.set_defaults(func=do_reparse)
     return p
 
 

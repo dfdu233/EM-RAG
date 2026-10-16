@@ -246,6 +246,10 @@ class ProgressiveSourceViews:
         retrieval_calls = self.retriever.calls if self.retriever else 0
         ranker_calls = self.ranker.calls
         base = self._answer(q, anchor)
+        # Use the ORIGINAL final MedCPT ordering as the stable anchor,
+        # rather than the raw historical KADS index ordering.
+        by_id = {doc.id: doc for doc in anchor}
+        stable_anchor = [by_id[key] for key in base["selected_doc_ids"]]
         prefixes = [{
             "round": 0, "prediction": base["prediction"],
             "base_prediction": base["prediction"],
@@ -307,7 +311,7 @@ class ProgressiveSourceViews:
                     # Explicitly preserve up to 3 original KADS documents,
                     # including its parametric knowledge when KADS chose it.
                     view_context = (
-                        anchor[:cfg.anchor_docs_per_view] + fresh)
+                        stable_anchor[:cfg.anchor_docs_per_view] + fresh)
                     if len(view_context) > cfg.max_reader_docs:
                         raise AssertionError("Context budget exceeded")
                     result = self._answer(q, view_context)

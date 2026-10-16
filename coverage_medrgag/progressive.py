@@ -46,6 +46,7 @@ class Config:
     paired_source_control: bool = False  # matched old-doc context; extra Reader call
     query_size_policy: str = "compact"  # reject reproduces historical failed plans
     fresh_ranking: str = "question"  # target_relation is a preregistered ablation
+    replay_source_views: bool = False  # exact previously selected new BM25 snippets
     planner_excerpt_chars: int = 700
     context_tokens: int = 128000
     max_prompt_chars: int = 150000
@@ -72,6 +73,10 @@ class Config:
             raise ValueError("Unknown query-size strategy")
         if self.fresh_ranking not in ("question", "target_relation"):
             raise ValueError("Unknown fresh-source ranking")
+        if self.replay_source_views and self.fresh_ranking != "question":
+            raise ValueError("Exact source replay cannot rerank newly selected sources")
+        if self.replay_source_views and self.max_rounds == 0:
+            raise ValueError("Replay requires at least one source-view round")
         if self.policy == "contrastive_vote" and not self.paired_source_control:
             raise ValueError("Contrastive vote requires matched source control")
         if self.paired_source_control and (
@@ -207,7 +212,8 @@ class ProgressiveSourceViews:
         self.rag_template = rag_template
         self.cfg = config or Config()
         self.tokenizer = tokenizer
-        if self.cfg.max_rounds and (planner is None or retriever is None):
+        if (self.cfg.max_rounds and not self.cfg.replay_source_views and
+                (planner is None or retriever is None)):
             raise ValueError("Live rounds require planner and real/replayed retriever")
 
     def _answer(self, q: Question, docs: list[Passage]) -> dict:
@@ -319,8 +325,16 @@ class ProgressiveSourceViews:
 
     def run(self, q: Question, retrieved: list[Passage],
             generated: list[Passage], *,
-            original_selection: tuple[int, ...] | None) -> dict:
+            original_selection: tuple[int, ...] | None,
+        frozen_record: dict | None = None) -> dict:
         cfg = self.cfg
+        if cfg.replay_source_views:
+            if (not isinstance(frozen_record, dict) or
+                    not isinstance(frozen_record.get("novel_views"), list) or
+                    len(frozen_record["novel_views"]) != cfg.max_rounds):
+                raise ValueError("Exact source replay requires all frozen PSV rounds")
+        elif frozen_record is not None:
+            raise ValueError("Frozen views provided without explicit replay mode")
         if len(retrieved) < 5 or len(generated) < 5:
             raise ValueError("MedRGAG cache must contain 5 retrieved + 5 KGCC")
         if (original_selection is None or
@@ -338,6 +352,10 @@ class ProgressiveSourceViews:
         retrieval_calls = self.retriever.calls if self.retriever else 0
         ranker_calls = self.ranker.calls
         base = self._answer(q, anchor)
+        if (cfg.replay_source_views and
+                frozen_record.get("baseline_prompt_sha256") !=
+                base["prompt_sha256"]):
+            raise ValueError("Frozen source replay B0 Reader prompt SHA mismatch")
         # Use the ORIGINAL final MedCPT ordering as the stable anchor,
         # rather than the raw historical KADS index ordering.
         by_id = {doc.id: doc for doc in anchor}
@@ -393,9 +411,28 @@ class ProgressiveSourceViews:
         discovered: list[Passage] = []
         vote_preds: list[str | None] = []
         for turn in range(1, cfg.max_rounds + 1):
-            query, target_relation, raw_plan, plan_info = self._plan_query(
-                q, generated, queries, discovered, turn,
-                base["prediction"], vote_preds)
+            if cfg.replay_source_views:
+                preserved = frozen_record["novel_views"][turn-1]
+                if preserved.get("round") != turn:
+                    raise ValueError("Non-contiguous frozen PSV source rounds")
+                query = preserved.get("query")
+                target_relation = preserved.get("target_relation_unverified")
+                raw_plan = preserved.get("raw_planner_output", "")
+                plan_info = {
+                    "status": "replayed_existing_source_view",
+                    "historical_plan": preserved.get("query_provenance"),
+                    "original_query": query,
+                    "original_length": len(query) if isinstance(query, str) else 0,
+                    "final_length": len(query) if isinstance(query, str) else 0,
+                    "max_chars": 300,
+                }
+                if query is not None and (
+                        not isinstance(query, str) or not 5 <= len(query) <= 300):
+                    raise ValueError("Invalid frozen PSV retrieval query")
+            else:
+                query, target_relation, raw_plan, plan_info = self._plan_query(
+                    q, generated, queries, discovered, turn,
+                    base["prediction"], vote_preds)
             stage: dict = {
                 "round": turn, "query": query, "query_provenance": plan_info,
                 "anchor_mode": cfg.anchor_mode,
@@ -410,7 +447,26 @@ class ProgressiveSourceViews:
             }
             if query is not None:
                 queries.append(query)
-                raw_documents = self.retriever.search(query, k=cfg.retrieval_k)
+                if cfg.replay_source_views:
+                    raw_documents = []
+                    for item in preserved.get("fresh_corpus_documents", []):
+                        if (not isinstance(item, dict) or
+                                not isinstance(item.get("text"), str) or
+                                not isinstance(item.get("id"), str)):
+                            raise ValueError("Invalid saved source passage")
+                        doc = Passage(
+                            id=item["id"], text=item["text"],
+                            origin=item.get("origin", ""),
+                            original_id=str(item.get("original_id", "")),
+                            title=str(item.get("title", "")))
+                        if (doc.origin != "retrieved" or
+                                content_fingerprint(doc.text) !=
+                                item.get("text_sha256")):
+                            raise ValueError("Frozen source provenance/hash invalid")
+                        raw_documents.append(doc)
+                else:
+                    raw_documents = self.retriever.search(
+                        query, k=cfg.retrieval_k)
                 # Rank only NEW real retrieved documents for the current view.
                 # Duplicate source IDs and duplicate normalized full text count
                 # as previously seen, even when another query returns them.
@@ -433,9 +489,16 @@ class ProgressiveSourceViews:
                              target_relation[:240], q.options)
                     if cfg.fresh_ranking == "target_relation" and target_relation
                     else q)
-                ranked_fresh = self.ranker.rank(scoring_query, unique) if unique else []
+                ranked_fresh = (unique if cfg.replay_source_views else
+                                self.ranker.rank(scoring_query, unique)
+                                if unique else [])
                 fresh = ranked_fresh[:cfg.fresh_docs_per_view]
-                stage["fresh_ranking"] = cfg.fresh_ranking
+                if cfg.replay_source_views and len(fresh) != preserved.get(
+                        "fresh_source_count"):
+                    raise ValueError("Replayed source-view coverage mismatch")
+                stage["fresh_ranking"] = (
+                    "frozen_exact_source_selection" if cfg.replay_source_views
+                    else cfg.fresh_ranking)
                 stage["fresh_source_count"] = len(fresh)
                 stage["fresh_outside_original_top32"] = sum(
                     source_key(d) not in original_32_ids and
@@ -543,6 +606,11 @@ class ProgressiveSourceViews:
             "ranker_batches": self.ranker.calls - ranker_calls,
             "source_groups_are_independent": False,
             "new_sources_can_be_false_or_misleading": True,
+            "source_views_replayed": cfg.replay_source_views,
+            "source_replay_logical_queries": (
+                sum(x["query"] is not None for x in new_views)
+                if cfg.replay_source_views else 0),
+            "retrieval_and_planner_cost_excluded_in_replay": cfg.replay_source_views,
             "actual_scaling_not_guaranteed": True,
             "gold_used_at_inference": False,
             "precomputed_KGCC_KADS_cost_excluded": True,

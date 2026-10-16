@@ -167,3 +167,13 @@ def test_source_control_requires_matched_document_count():
         Config(policy="contrastive_vote")
     with pytest.raises(ValueError, match="anchor"):
         Config(anchor_mode="nonsense")
+
+
+def test_short_original_kads_remains_supported_without_fake_padding():
+    engine, reader, _, _ = build(Config(max_rounds=1, anchor_mode="original"))
+    q, ret, gen = inputs()
+    result = engine.run(q, ret, gen, original_selection=(0, 5))
+    assert result["base_selected_doc_ids"] == ["r0", "g0"]
+    assert result["anchor_doc_ids"] == ["r0", "g0"]
+    assert result["reader_calls"] == 2
+    assert result["novel_views"][0]["anchor_provenance"]["anchor_count"] == 2

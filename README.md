@@ -1,3 +1,16 @@
+# Progressive Source Views: Active MedRGAG Scaling Diagnostics
+
+This independent branch implements a training-free, testable RAG-GAG
+progressive-retrieval experiment. It uses genuine new BM25 searches,
+frozen Reader answer disagreement feedback, the original cached KGCC
+and KADS as its exact budget-zero reference, and source-view answering.
+
+See [protocol, limitations, ablations, and server commands](coverage_medrgag/PROGRESSIVE.md).
+It is NOT a validated SOTA method and has NO clinical correctness guarantees.
+Previous negative-result branches and the main branch are not modified.
+
+---
+
 # Training-free Anytime Evidence Selection (experimental branch)
 
 This branch adds an independent, training-free MedRGAG extension under

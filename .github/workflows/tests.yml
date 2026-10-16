@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
   push:
-    branches: [main, 'feat/coverage-adaptive-medrgag', 'feat/training-free-anytime-context', 'research/progressive-source-views']
+    branches: [main, 'feat/coverage-adaptive-medrgag', 'feat/training-free-anytime-context', 'research/progressive-source-views', 'feat/medrgag-abcd']
   pull_request:
 
 jobs:

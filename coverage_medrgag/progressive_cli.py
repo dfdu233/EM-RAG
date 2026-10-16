@@ -70,6 +70,8 @@ def _run(args) -> int:
                           "snippets_final_select.json"),
         "templates": Path(args.template or root / "src" / "template.py"),
     }
+    if args.replay_source_views:
+        source_paths["replay"] = Path(args.replay_source_views)
     for label, path in source_paths.items():
         if not path.is_file():
             raise FileNotFoundError(f"Original MedRGAG {label} missing: {path}")
@@ -86,6 +88,7 @@ def _run(args) -> int:
         paired_source_control=args.paired_source_control,
         query_size_policy=args.query_size_policy,
         fresh_ranking=args.fresh_ranking,
+        replay_source_views=bool(args.replay_source_views),
         planner_excerpt_chars=args.planner_excerpt_chars,
         context_tokens=args.context_tokens,
         max_prompt_chars=args.max_prompt_chars,
@@ -103,6 +106,16 @@ def _run(args) -> int:
         # Exact original MedRGAG prompt truncation depends on tokenizer.
         print("WARNING: no --reader-tokenizer; original MedRGAG token truncation "
               "cannot be guaranteed identical, especially on long prompts.")
+    replay_records = None
+    if config.replay_source_views:
+        from .evaluation import read_jsonl
+        replay_records = read_jsonl(args.replay_source_views)
+        if set(ids) - set(replay_records):
+            raise ValueError("Frozen replay misses selected question IDs")
+        if any(replay_records[qid].get("dataset") != args.dataset or
+               replay_records[qid].get("reader") != args.reader_model
+               for qid in ids):
+            raise ValueError("Replay dataset/Reader mismatch")
     files_sha = {k: fingerprint(p) for k, p in source_paths.items()}
     args_saved = {
         k: v for k, v in vars(args).items()
@@ -154,7 +167,7 @@ def _run(args) -> int:
         send_seed=not args.reader_omit_seed)
     planner = None
     retriever = None
-    if config.max_rounds:
+    if config.max_rounds and not config.replay_source_views:
         if not args.planner_model:
             raise ValueError("--planner-model required when max-rounds>0")
         planner = OpenAIChat(
@@ -188,13 +201,17 @@ def _run(args) -> int:
             beginning = perf_counter()
             result = system.run(
                 questions[qid], retrieved, generated,
-                original_selection=sources.official_selection(qid))
+                original_selection=sources.official_selection(qid),
+                frozen_record=(
+                    replay_records[qid] if replay_records is not None
+                    else None))
             result.update({
                 "dataset": args.dataset, "reader": args.reader_model,
                 "planner": args.planner_model if config.max_rounds else None,
                 "corpus": args.corpus, "qid": qid,
                 "elapsed_wall_seconds": perf_counter() - beginning,
-                "uses_real_retrieval_index": config.max_rounds > 0,
+                "uses_real_retrieval_index": (
+                    config.max_rounds > 0 and not config.replay_source_views),
                 "ranker_is_real": not args.no_rerank,
             })
             handle.write(json.dumps(result, ensure_ascii=False) + "\n")
@@ -283,6 +300,8 @@ def build_parser() -> argparse.ArgumentParser:
                      choices=("question", "target_relation"),
                      default="question",
                      help="How to rerank newly fetched REAL source documents")
+    run.add_argument("--replay-source-views",
+                     help="Gold-blind exact replay of previously selected new BM25 passages; no live planner/retrieval; matched B0 SHA required")
     run.add_argument("--planner-excerpt-chars", type=int, default=700)
     run.add_argument("--context-tokens", type=int, default=128000)
     run.add_argument("--max-prompt-chars", type=int, default=150000)

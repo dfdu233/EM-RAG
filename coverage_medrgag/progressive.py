@@ -24,7 +24,8 @@ import re
 from typing import Protocol
 
 from .data import Question, Passage, reader_prompt
-from .models import ChatModel, parse_answer, parse_json
+from .models import ChatModel, parse_json
+from .progressive_validity import fit_query, recover_answer, view_provenance
 
 
 class SourceRetriever(Protocol):
@@ -40,7 +41,11 @@ class Config:
     anchor_docs_per_view: int = 3
     max_reader_docs: int = 5
     planner_mode: str = "kgcc"  # ablation: question-only planner
-    policy: str = "anchored_vote"  # ablation: always use most recent view
+    policy: str = "anchored_vote"  # optional contrastive_vote/source-only
+    anchor_mode: str = "original"  # retrieved_only isolates KGCC anchor effects
+    paired_source_control: bool = False  # matched old-doc context; extra Reader call
+    query_size_policy: str = "compact"  # reject reproduces historical failed plans
+    fresh_ranking: str = "question"  # target_relation is a preregistered ablation
     planner_excerpt_chars: int = 700
     context_tokens: int = 128000
     max_prompt_chars: int = 150000
@@ -59,8 +64,19 @@ class Config:
             raise ValueError("Anchor + fresh docs must fit within five")
         if self.planner_mode not in ("kgcc", "question"):
             raise ValueError("Unknown planner ablation")
-        if self.policy not in ("anchored_vote", "latest"):
+        if self.policy not in ("anchored_vote", "latest", "contrastive_vote"):
             raise ValueError("Unknown aggregation policy")
+        if self.anchor_mode not in ("original", "retrieved_only"):
+            raise ValueError("Unknown anchor control")
+        if self.query_size_policy not in ("compact", "reject"):
+            raise ValueError("Unknown query-size strategy")
+        if self.fresh_ranking not in ("question", "target_relation"):
+            raise ValueError("Unknown fresh-source ranking")
+        if self.policy == "contrastive_vote" and not self.paired_source_control:
+            raise ValueError("Contrastive vote requires matched source control")
+        if self.paired_source_control and (
+                self.fresh_docs_per_view + self.anchor_docs_per_view != 5):
+            raise ValueError("Matched comparison needs five documents per view")
         if self.context_tokens < 1 or self.max_prompt_chars < 1:
             raise ValueError("Invalid Reader context budget")
 
@@ -138,7 +154,10 @@ PLANNER_SYSTEM = (
     "Identify one concrete, unresolved task-specific relationship or "
     "study condition that would help distinguish the original options. "
     "Search for actual data about the relationship, including possible "
-    "negative findings and confounders. The next query must NOT duplicate "
+    "negative findings and confounders. The query MUST be <=240 characters "
+    "(hard maximum 300), using precise search terms and preserving important "
+    "negation, population and adjustment conditions. "
+    "The next query must NOT duplicate "
     "any prior query. Use full-text medical search terminology. "
     'Reply in JSON exactly: {"query":"...","target_relation":"..."}'
 )
@@ -168,8 +187,10 @@ class ProgressiveSourceViews:
         raw = self.reader.complete(
             "You are a helpful assistant.", prompt,
             temperature=self.cfg.temperature, seed=self.cfg.seed, max_tokens=512)
+        parsed = recover_answer(raw, q.labels)
         return {
-            "prediction": parse_answer(raw, q.labels),
+            "prediction": parsed.prediction,
+            "parse_method": parsed.method,
             "raw_reader_output": raw,
             "selected_doc_ids": [d.id for d in chosen],
             "selected_original_ids": [d.original_id for d in chosen],
@@ -183,7 +204,7 @@ class ProgressiveSourceViews:
                     previous_sources: list[Passage], turn: int,
                     baseline_answer: str | None,
                     prior_view_answers: list[str | None]
-                    ) -> tuple[str | None, str | None, str]:
+                    ) -> tuple[str | None, str | None, str, dict]:
         if self.planner is None:
             raise AssertionError("Planner not supplied")
         background = ""
@@ -216,29 +237,46 @@ class ProgressiveSourceViews:
             + "\nNEWLY DISCOVERED EXTERNAL SOURCES (untrusted):\n"
             + (source_text or "None yet")
             + f"\nROUND: {turn}\n"
-            + "Select exactly one new query. Do not use the gold answer, "
-              "assume a diagnosis, or copy background conjectures as fact.")
+            + "Select exactly one NEW search query of no more than 240 "
+              "characters, which preserves the medically decisive condition. "
+              "Do not use the gold answer, assume a diagnosis, or copy "
+              "background conjectures as fact.")
         raw = self.planner.complete(
             PLANNER_SYSTEM, prompt, temperature=0.0,
             seed=self.cfg.seed, max_tokens=320)
         try:
-            result = parse_json(raw)
-            query = result.get("query")
-            relation = result.get("target_relation")
-            if not isinstance(query, str) or not 5 <= len(query.strip()) <= 300:
-                raise ValueError("Invalid planned query")
+            obj = parse_json(raw)
+            query = obj.get("query")
+            relation = obj.get("target_relation")
+            if not isinstance(query, str):
+                raise ValueError("query_field_missing_or_invalid")
             if not isinstance(relation, str) or not relation.strip():
-                raise ValueError("Missing target relation")
-            query = query.strip()
-            if (normalize_query(query) == normalize_query(q.text) or
-                    normalize_query(query) in {
+                raise ValueError("target_relation_missing")
+            normalized = fit_query(
+                query, relation=relation, question=q.text,
+                max_chars=300, strategy=self.cfg.query_size_policy)
+            info = {
+                "status": normalized.status,
+                "original_query": normalized.original_query,
+                "original_length": normalized.original_length,
+                "final_length": normalized.final_length,
+                "max_chars": 300,
+            }
+            if normalized.query is None:
+                return None, None, raw, info
+            if (normalize_query(normalized.query) == normalize_query(q.text) or
+                    normalize_query(normalized.query) in {
                         normalize_query(x) for x in previous_queries}):
-                raise ValueError("Duplicate uninformative query")
-            return query, relation.strip(), raw
-        except ValueError:
-            # Record the planning failure; do not hallucinate a successful
-            # retrieval or quietly substitute a misleading query.
-            return None, None, raw
+                info["status"] = "duplicate_query_after_repair"
+                return None, None, raw, info
+            return normalized.query, relation.strip(), raw, info
+        except ValueError as exc:
+            return None, None, raw, {
+                "status": f"malformed_plan:{str(exc)}",
+                "original_query": None,
+                "original_length": 0, "final_length": 0,
+                "max_chars": 300,
+            }
 
     def run(self, q: Question, retrieved: list[Passage],
             generated: list[Passage], *,
@@ -265,9 +303,40 @@ class ProgressiveSourceViews:
         # rather than the raw historical KADS index ordering.
         by_id = {doc.id: doc for doc in anchor}
         stable_anchor = [by_id[key] for key in base["selected_doc_ids"]]
+        if cfg.anchor_mode == "retrieved_only":
+            # Remove KGCC from the NEW view, not from B0, to identify whether
+            # shared generated background explains correlated Reader errors.
+            candidates = [d for d in stable_anchor if d.origin == "retrieved"]
+            candidates += [d for d in retrieved[:5]
+                           if d.origin == "retrieved"]
+            anchor_docs = []
+            seen_anchor = set()
+            for d in candidates:
+                if d.id not in seen_anchor:
+                    anchor_docs.append(d)
+                    seen_anchor.add(d.id)
+                if len(anchor_docs) == cfg.anchor_docs_per_view:
+                    break
+        else:
+            anchor_docs = stable_anchor[:cfg.anchor_docs_per_view]
+        if len(anchor_docs) != cfg.anchor_docs_per_view:
+            raise ValueError("Insufficient original source anchors for this view")
+        # Fixed-old-source counterfactual for the same anchor, document count
+        # and frozen Reader. With an original KADS anchor this is exactly B0.
+        control_fill = []
+        seen_control = {x.id for x in anchor_docs}
+        for candidate in stable_anchor + retrieved[:5] + generated[:5]:
+            if candidate.id not in seen_control:
+                control_fill.append(candidate)
+                seen_control.add(candidate.id)
+            if len(control_fill) >= cfg.fresh_docs_per_view:
+                break
+        control_docs = anchor_docs + control_fill
+        matched_control = None
         prefixes = [{
             "round": 0, "prediction": base["prediction"],
             "base_prediction": base["prediction"],
+            "base_parse_method": base["parse_method"],
             "reason": "original_KADS_reference",
             "reader_calls_total": self.reader.calls - rcalls,
             "planner_calls_total": 0, "retrieval_calls_total": 0,
@@ -282,11 +351,14 @@ class ProgressiveSourceViews:
         discovered: list[Passage] = []
         vote_preds: list[str | None] = []
         for turn in range(1, cfg.max_rounds + 1):
-            query, target_relation, raw_plan = self._plan_query(
+            query, target_relation, raw_plan, plan_info = self._plan_query(
                 q, generated, queries, discovered, turn,
                 base["prediction"], vote_preds)
             stage: dict = {
-                "round": turn, "query": query,
+                "round": turn, "query": query, "query_provenance": plan_info,
+                "anchor_mode": cfg.anchor_mode,
+                "anchor_provenance": view_provenance(
+                    anchor_docs, [], stable_anchor),
                 "target_relation_unverified": target_relation,
                 "raw_planner_output": raw_plan,
                 "fresh_source_count": 0,
@@ -314,8 +386,14 @@ class ProgressiveSourceViews:
                     unique.append(d)
                     local_ids.add(key)
                     local_hashes.add(hsh)
-                ranked_fresh = self.ranker.rank(q, unique) if unique else []
+                scoring_query = (
+                    Question(q.id, q.text + "\nTarget relation: " +
+                             target_relation[:240], q.options)
+                    if cfg.fresh_ranking == "target_relation" and target_relation
+                    else q)
+                ranked_fresh = self.ranker.rank(scoring_query, unique) if unique else []
                 fresh = ranked_fresh[:cfg.fresh_docs_per_view]
+                stage["fresh_ranking"] = cfg.fresh_ranking
                 stage["fresh_source_count"] = len(fresh)
                 stage["fresh_outside_original_top32"] = sum(
                     source_key(d) not in original_32_ids and
@@ -326,12 +404,37 @@ class ProgressiveSourceViews:
                     # Every view is source-disjoint from previous NEW views.
                     # Explicitly preserve up to 3 original KADS documents,
                     # including its parametric knowledge when KADS chose it.
-                    view_context = (
-                        stable_anchor[:cfg.anchor_docs_per_view] + fresh)
+                    view_context = anchor_docs + fresh
                     if len(view_context) > cfg.max_reader_docs:
                         raise AssertionError("Context budget exceeded")
+                    stage["anchor_provenance"] = view_provenance(
+                        anchor_docs, fresh, stable_anchor)
+                    # Only run a matched control when BOTH inputs have five
+                    # passages. Otherwise count differences confound evidence.
+                    if (cfg.paired_source_control and matched_control is None
+                            and len(view_context) == 5 and len(control_docs) == 5):
+                        if [d.id for d in control_docs] == [
+                                d.id for d in stable_anchor]:
+                            matched_control = dict(base)
+                            matched_control["reused_B0"] = True
+                        else:
+                            matched_control = self._answer(q, control_docs)
+                            matched_control["reused_B0"] = False
+                        matched_control["anchor_doc_ids"] = [
+                            d.id for d in anchor_docs]
+                        matched_control["old_fill_doc_ids"] = [
+                            d.id for d in control_fill]
                     result = self._answer(q, view_context)
                     stage.update({
+                        "parse_method": result["parse_method"],
+                        "control_prediction": (
+                            matched_control["prediction"] if matched_control
+                            else None),
+                        "differs_from_matched_control": (
+                            result["prediction"] != matched_control["prediction"]
+                            if matched_control and result["prediction"] is not None
+                            and matched_control["prediction"] is not None
+                            else None),
                         "prediction": result["prediction"],
                         "raw_reader_output": result["raw_reader_output"],
                         "selected_doc_ids": result["selected_doc_ids"],
@@ -346,7 +449,21 @@ class ProgressiveSourceViews:
                     ever_seen_hashes.update(
                         content_fingerprint(d.text) for d in fresh)
             new_views.append(stage)
-            voted = aggregate(base["prediction"], vote_preds, policy=cfg.policy)
+            voted = aggregate(
+                base["prediction"], vote_preds,
+                policy=("anchored_vote" if cfg.policy == "contrastive_vote"
+                        else cfg.policy))
+            if (cfg.policy == "contrastive_vote" and base["prediction"] is not None
+                    and voted["prediction"] != base["prediction"]):
+                if (matched_control is None or
+                        matched_control["prediction"] is None):
+                    voted = dict(voted, prediction=base["prediction"],
+                                 reason="matched_control_unavailable")
+                elif matched_control["prediction"] == voted["prediction"]:
+                    voted = dict(voted, prediction=base["prediction"],
+                                 reason="change_also_present_without_new_sources")
+                else:
+                    voted = dict(voted, reason="source_contrast_consensus")
             prefixes.append({
                 "round": turn,
                 "prediction": voted["prediction"],
@@ -377,6 +494,14 @@ class ProgressiveSourceViews:
             "baseline_prompt_sha256": base["prompt_sha256"],
             "baseline_prompt_chars": base["prompt_chars"],
             "base_raw_reader_output": base["raw_reader_output"],
+            "base_parse_method": base["parse_method"],
+            "anchor_mode": cfg.anchor_mode,
+            "anchor_doc_ids": [d.id for d in anchor_docs],
+            "anchor_generated_count": sum(
+                d.origin == "parametric_generated" for d in anchor_docs),
+            "query_size_policy": cfg.query_size_policy,
+            "fresh_ranking": cfg.fresh_ranking,
+            "matched_source_control": matched_control,
             "base_selected_doc_ids": base["selected_doc_ids"],
             "base_selected_sources": base["selected_sources"],
             "depth_used": 5 + sum(x["fresh_source_count"] for x in new_views),

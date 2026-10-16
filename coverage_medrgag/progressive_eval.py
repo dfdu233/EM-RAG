@@ -73,15 +73,22 @@ def evaluate_progressive(predictions: str | Path, benchmark_path: str | Path,
                 first, budget[round_no], gold, bootstrap=bootstrap,
                 seed=seed + round_no)
             direct["net_rescue_minus_harm"] = direct["rescue"] - direct["harm"]
-            this_quality = quality[round_no]
+            # B0 -> Br is cumulative across ALL completed search rounds.
+            # Reporting only the last turn here would undercount the actual
+            # expansion and misstate the budget/coverage mechanism.
+            previous_quality = [
+                view for item in rows.values()
+                for view in item.get("novel_views", [])
+                if view["round"] <= round_no
+            ]
             direct["n_new_source_views"] = sum(
-                item["fresh_source_count"] > 0 for item in this_quality)
+                item["fresh_source_count"] > 0 for item in previous_quality)
             direct["n_selected_new_source_passages"] = sum(
-                item["fresh_source_count"] for item in this_quality)
+                item["fresh_source_count"] for item in previous_quality)
             direct["n_selected_outside_original_top32"] = sum(
-                item["fresh_outside_original_top32"] for item in this_quality)
+                item["fresh_outside_original_top32"] for item in previous_quality)
             direct["n_failed_plans"] = sum(
-                item["query"] is None for item in this_quality)
+                item["query"] is None for item in previous_quality)
             transitions[f"B0_to_B{round_no}"] = direct
     incremental = {}
     for before, after in zip(sorted(budget), sorted(budget)[1:]):

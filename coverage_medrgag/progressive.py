@@ -147,6 +147,25 @@ def aggregate(base: str | None, views: list[str | None],
             "reason": "anchored_ambiguous_or_insufficient_support"}
 
 
+
+def decide(base: str | None, views: list[str | None], *,
+           policy: str, matched_control: dict | None = None) -> dict:
+    """Same decision rule for live PSV and offline reparse. No oracle labels."""
+    voted = aggregate(
+        base, views,
+        policy="anchored_vote" if policy == "contrastive_vote" else policy)
+    if (policy != "contrastive_vote" or base is None or
+            voted["prediction"] == base):
+        return voted
+    if matched_control is None or matched_control.get("prediction") is None:
+        return dict(voted, prediction=base,
+                    reason="matched_control_unavailable")
+    if matched_control["prediction"] == voted["prediction"]:
+        return dict(voted, prediction=base,
+                    reason="change_also_present_without_new_sources")
+    return dict(voted, reason="source_contrast_consensus")
+
+
 PLANNER_SYSTEM = (
     "You plan ONE biomedical corpus search. A generated knowledge snippet "
     "is a conjecture, NOT a cited or independently verified fact. "
@@ -451,21 +470,9 @@ class ProgressiveSourceViews:
                     ever_seen_hashes.update(
                         content_fingerprint(d.text) for d in fresh)
             new_views.append(stage)
-            voted = aggregate(
-                base["prediction"], vote_preds,
-                policy=("anchored_vote" if cfg.policy == "contrastive_vote"
-                        else cfg.policy))
-            if (cfg.policy == "contrastive_vote" and base["prediction"] is not None
-                    and voted["prediction"] != base["prediction"]):
-                if (matched_control is None or
-                        matched_control["prediction"] is None):
-                    voted = dict(voted, prediction=base["prediction"],
-                                 reason="matched_control_unavailable")
-                elif matched_control["prediction"] == voted["prediction"]:
-                    voted = dict(voted, prediction=base["prediction"],
-                                 reason="change_also_present_without_new_sources")
-                else:
-                    voted = dict(voted, reason="source_contrast_consensus")
+            voted = decide(
+                base["prediction"], vote_preds, policy=cfg.policy,
+                matched_control=matched_control)
             prefixes.append({
                 "round": turn,
                 "prediction": voted["prediction"],

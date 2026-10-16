@@ -182,6 +182,19 @@ PLANNER_SYSTEM = (
 )
 
 
+PLANNER_SYSTEM_LEGACY = (
+    "You plan ONE biomedical corpus search. A generated knowledge snippet "
+    "is a conjecture, NOT a cited or independently verified fact. "
+    "Do NOT assert any answer choice is correct. "
+    "Identify one concrete, unresolved task-specific relationship or "
+    "study condition that would help distinguish the original options. "
+    "Search for actual data about the relationship, including possible "
+    "negative findings and confounders. The next query must NOT duplicate "
+    "any prior query. Use full-text medical search terminology. "
+    'Reply in JSON exactly: {"query":"...","target_relation":"..."}'
+)
+
+
 class ProgressiveSourceViews:
     def __init__(self, *, reader: ChatModel, planner: ChatModel | None,
                  retriever: SourceRetriever | None, ranker,
@@ -256,12 +269,19 @@ class ProgressiveSourceViews:
             + "\nNEWLY DISCOVERED EXTERNAL SOURCES (untrusted):\n"
             + (source_text or "None yet")
             + f"\nROUND: {turn}\n"
-            + "Select exactly one NEW search query of no more than 240 "
-              "characters, which preserves the medically decisive condition. "
-              "Do not use the gold answer, assume a diagnosis, or copy "
-              "background conjectures as fact.")
+            + (
+                "Select exactly one new query. Do not use the gold answer, "
+                "assume a diagnosis, or copy background conjectures as fact."
+                if self.cfg.query_size_policy == "reject"
+                else "Select exactly one NEW search query of no more than 240 "
+                     "characters, which preserves the medically decisive condition. "
+                     "Do not use the gold answer, assume a diagnosis, or copy "
+                     "background conjectures as fact."))
+        planning_system = (
+            PLANNER_SYSTEM_LEGACY if self.cfg.query_size_policy == "reject"
+            else PLANNER_SYSTEM)
         raw = self.planner.complete(
-            PLANNER_SYSTEM, prompt, temperature=0.0,
+            planning_system, prompt, temperature=0.0,
             seed=self.cfg.seed, max_tokens=320)
         try:
             obj = parse_json(raw)

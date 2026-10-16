@@ -180,7 +180,9 @@ class ProgressiveSourceViews:
 
     def _plan_query(self, q: Question, kgcc: list[Passage],
                     previous_queries: list[str],
-                    previous_sources: list[Passage], turn: int
+                    previous_sources: list[Passage], turn: int,
+                    baseline_answer: str | None,
+                    prior_view_answers: list[str | None]
                     ) -> tuple[str | None, str | None, str]:
         if self.planner is None:
             raise AssertionError("Planner not supplied")
@@ -193,8 +195,21 @@ class ProgressiveSourceViews:
         source_text = "\n".join(
             f"[{x.original_id}] {x.text[:self.cfg.planner_excerpt_chars]}"
             for x in previous_sources[-4:])
+        divergent = sorted({
+            label for label in prior_view_answers
+            if label is not None and label != baseline_answer
+        })
+        disagreement = (
+            "\nUNVERIFIED READER ANSWER DISAGREEMENT (not truth): "
+            + f"reference={baseline_answer}; alternate_views={divergent}. "
+            + "Seek independently retrieved facts that could distinguish "
+              "the competing choices WITHOUT presuming either correct.\n"
+            if divergent else
+            "\nNo current answer disagreement; this may still be a correlated error.\n"
+        )
         prompt = (
             "MEDICAL QUESTION AND OPTIONS:\n" + q.formatted()
+            + disagreement
             + background
             + "\nPRIOR CORPUS QUERIES:\n"
             + "\n".join(previous_queries)
@@ -268,7 +283,8 @@ class ProgressiveSourceViews:
         vote_preds: list[str | None] = []
         for turn in range(1, cfg.max_rounds + 1):
             query, target_relation, raw_plan = self._plan_query(
-                q, generated, queries, discovered, turn)
+                q, generated, queries, discovered, turn,
+                base["prediction"], vote_preds)
             stage: dict = {
                 "round": turn, "query": query,
                 "target_relation_unverified": target_relation,

@@ -565,8 +565,11 @@ class ProgressiveSourceViews:
                 "valid_view_count": sum(x is not None for x in vote_preds),
                 "queries_used_total": len(queries),
                 "reader_calls_total": self.reader.calls - rcalls,
-                "planner_calls_total": self.planner.calls - pcalls,
-                "retrieval_calls_total": self.retriever.calls - retrieval_calls,
+                "planner_calls_total": (
+                    self.planner.calls - pcalls if self.planner else 0),
+                "retrieval_calls_total": (
+                    self.retriever.calls - retrieval_calls
+                    if self.retriever else 0),
                 "outside_original_top32_cumulative": sum(
                     x["fresh_outside_original_top32"] for x in new_views),
                 "selected_doc_ids": (

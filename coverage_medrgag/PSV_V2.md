@@ -128,6 +128,46 @@ original with the same other settings and a different output directory.
 Likewise, fresh-ranking and query-size-policy changes require their OWN
 output directories. Resume protection compares all args and cache hashes.
 
+## Exact NEW-source replay: required for clean KGCC-anchor comparisons
+
+Separate LIVE arms can generate different future queries because the planner
+sees Reader disagreements. To isolate only the anchor mode, record one live
+PSV source trajectory (which already contains full selected source text,
+hashes, query and target relation) and reuse those same passages.
+
+The replay NEVER contacts the planner or BM25. It makes fresh Reader calls
+on the original B0 and new source contexts, with the SAME frozen passages.
+All original KADS/KGCC caches, Reader checkpoint and tokenizer MUST remain
+identical. B0 prompt SHA and each source-content hash are hard-validated.
+
+    python -m coverage_medrgag.progressive_cli run \
+      --medrgag-root "$MED" --dataset "$DATA" \
+      --ids-file "$DEV" --reader-model "$READER" \
+      --reader-tokenizer /path/to/reader-checkpoint \
+      --api-base "$API" --api-key EMPTY \
+      --max-rounds 2 --replay-source-views \
+      outputs/psv-v2/dev/live/predictions.jsonl \
+      --anchor-mode retrieved_only --paired-source-control \
+      --policy anchored_vote --max-new-examples 40 \
+      --output outputs/psv-v2/dev/replay_retrieved_only
+
+The replay includes only EXACT originally selected new source passages,
+not the full raw BM25 results that were NOT saved in the old PSV traces.
+It therefore CANNOT investigate changes to upstream retrieval recall,
+fresh-document reranking, or query planning. Its precise purpose is
+anchor / Reader / aggregation effects given FIXED new evidence.
+
+Source replay's actual NEW planner and BM25 call counts are zero, but the
+original live source collection is a prerequisite cost and MUST be included
+in total-compute comparisons. The evaluator separately reports replayed
+logical query rounds and actual inference calls.
+
+Use an additional replay with --anchor-mode original and a different output
+directory. Compare these exact-source runs via --compare with matching B0
+prompt hashes. For the cleanest anchor-only comparison, use
+--policy anchored_vote and --paired-source-control consistently; evaluate
+--policy contrastive_vote as another strictly separate ablation.
+
 ## Gold-blind comparison of existing FROZEN runs
 
 Use this to measure how much apparent improvement comes only from answer
@@ -168,9 +208,9 @@ Suggested pre-registered comparisons:
 1. Old PSV outputs under uniform frozen answer recovery (format-only).
 2. Original anchor vs retrieved-only anchor, same queries/models/Reader
    budget; ideally replay cached queries/results to isolate anchor effects.
-   A new live run can generate DIFFERENT planner queries after feedback.
-   The current CLI does NOT cache/replay cross-arm planned queries and BM25
-   results, so this matching limitation must be stated.
+   Live arms can generate different queries, so use --replay-source-views
+   to hold the EXACT originally selected new source passages constant. This
+   replays selected documents, not the whole original BM25 result list.
 3. Retrieved-only anchor + optional matched fixed-five-doc source control.
 4. Anchored vote vs contrastive vote, preferably by GOLD-BLIND offline
    policy replay on identical Reader/source traces. The main CLI runs both

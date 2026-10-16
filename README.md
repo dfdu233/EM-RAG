@@ -1,3 +1,19 @@
+# Training-free Anytime Evidence Selection (experimental branch)
+
+This branch adds an independent, training-free MedRGAG extension under
+[coverage_medrgag/ANYTIME.md](coverage_medrgag/ANYTIME.md).
+It retains the original KGCC, KADS K5 anchor, MedCPT ranking, and frozen
+Reader. A fixed document-coverage surrogate is optimized incrementally
+over K=5/10/20/32 using best-context memory. No trained module, auxiliary
+LLM sufficiency check, or answer-update Gate is required.
+
+**Only the estimated evidence-coverage surrogate is guaranteed to be
+nondecreasing, NOT real Reader answer correctness.** The optional
+per-depth answer experiment tests this difference directly. The default
+main branch and all prior feature branches remain unchanged.
+
+---
+
 # Coverage-Adaptive MedRGAG — NEW experimental research branch
 
 **This branch is not a replacement for the EM-RAG v0.1/v0.2 history.**

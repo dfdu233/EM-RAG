@@ -1,3 +1,19 @@
+# MedRGAG A+B+C+D — Four-paper baseline composition
+
+This is an **engineering combination**, NOT a validated new research
+method or SOTA. Original MedRGAG KGCC/KADS/MedCPT/Reader is the B0
+reference. A = Query2doc (EMNLP 2023), B = IRCoT (ACL 2023),
+C = RECOMP-inspired training-free extraction (ICLR 2024),
+D = SuRe-inspired option-conditioned literal source quotations
+(ICLR 2024). Each component has an independent removal ablation.
+
+**[Algorithm, server run commands and accuracy-cost protocol](coverage_medrgag/ABCD.md)**
+
+The rest of this README describes earlier experimental branches carried
+forward for backwards compatibility; their scores are NOT ABCD results.
+
+---
+
 # Progressive Source Views: Active MedRGAG Scaling Diagnostics
 
 This independent branch implements a training-free, testable RAG-GAG
